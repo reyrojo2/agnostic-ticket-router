@@ -1,0 +1,19 @@
+server:
+  port: 8083
+spring:
+  application:
+    name: decision-engine-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+app:
+  knowledge:
+    base-url: ${KNOWLEDGE_BASE_URL:http://localhost:8082}
+  ai:
+    provider: ${AI_PROVIDER:laya}
+    base-url: ${AI_BASE_URL:${LAYA_BASE_URL:http://localhost:8000}}
+    api-key: ${AI_API_KEY:${LAYA_API_KEY:}}
+    model: ${AI_MODEL:${LAYA_MODEL:multilingual}}
+    lang: ${AI_LANG:${LAYA_LANG:es}}

@@ -1,0 +1,12 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: mail-ingestion-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+app:
+  cors-origin: ${CORS_ORIGIN:http://localhost:4200}

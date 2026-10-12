@@ -1,0 +1,8 @@
+{
+  "profileCode": "TELCO_DEMO",
+  "from": "drecalde@claro.com.ec",
+  "to": ["atencionases@claro.com.ec"],
+  "subject": "RV: TRASPASO DE RUC BFS ECUADOR a ARDANARETAIL",
+  "body": "Ayuda con el siguiente ticket #3856364. Gestionar el traspaso de la línea detallada y del servicio de internet del cliente BFS Ecuador al RUC de ARDANARETAIL. El cliente solicita además facturas separadas. Existe un listado de líneas a migrar.",
+  "metadata": {"ticketReferencia": "3856364"}
+}

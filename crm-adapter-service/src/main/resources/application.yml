@@ -1,0 +1,26 @@
+server:
+  port: 8084
+spring:
+  application:
+    name: crm-adapter-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/agnostic_router}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    table: flyway_history_crm
+
+app:
+  security:
+    jwt-secret: ${APP_JWT_SECRET}
+    cors-origin: ${CORS_ORIGIN:http://localhost:4200}
