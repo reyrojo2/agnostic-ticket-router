@@ -1,4 +1,71 @@
-# AgnosticTicketRouter — MVP académico v0.2
+# AgnosticTicketRouter — Docker Compose y MVP académico
+
+AgnosticTicketRouter recibe solicitudes no estructuradas, las transforma en eventos, aplica reglas/IA y envía tickets mediante un adaptador CRM configurable. El **arranque recomendado** para desarrollo y demostración es Docker Desktop, sin Eureka.
+
+## Arranque en Windows con Docker Desktop
+
+1. En la raíz del repositorio, copia `.env.example` a `.env` si todavía no existe. Completa `DB_PASSWORD`, `RABBITMQ_PASSWORD`, `ADMIN_PASSWORD`, `APP_JWT_SECRET` (mínimo 32 bytes) y los tres secretos `ESPOCRM_*` para inicializar una instalación nueva de EspoCRM. Mantén los secretos fuera de Git. Si ya usas los contenedores, **conserva las contraseñas de las bases existentes**: cambiarlas en `.env` no cambia automáticamente las credenciales persistidas.
+2. Detén los JAR Java y `npm start` locales antes de ejecutar el stack, para liberar los puertos 8081–8085, 8090 y 4200. Mantén Docker Desktop abierto.
+3. Desde PowerShell en la raíz:
+
+```powershell
+.\scripts\start.ps1
+docker compose ps
+```
+
+4. Abre [Angular](http://localhost:4200), [EspoCRM](http://localhost:8080), [RabbitMQ](http://localhost:15672) y [Mailpit](http://localhost:8025).
+5. Para detener **sin borrar datos**, ejecuta `.\scripts\stop.ps1`. No uses `docker compose down -v`.
+
+El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic-ticket-router`) reúne PostgreSQL, RabbitMQ, Mailpit, seis microservicios Java y Angular; el proyecto separado `agnostic-espo` mantiene EspoCRM y su MariaDB, preservando sus volúmenes existentes. El primer build requiere descargar imágenes, dependencias Maven y paquetes npm, y puede tardar varios minutos.
+
+### Puertos y nombres internos
+
+| Componente | Windows | Desde otro contenedor del stack |
+| --- | --- | --- |
+| Angular + proxy Nginx | http://localhost:4200 | frontend-angular:80 |
+| PostgreSQL | localhost:5433 | postgres:5432 |
+| RabbitMQ / administración | localhost:5672 / http://localhost:15672 | rabbitmq:5672 |
+| Mailpit SMTP / UI | localhost:1025 / http://localhost:8025 | mailpit:1025 |
+| Business Knowledge | localhost:8082 | business-knowledge-service:8082 |
+| Mail Ingestion | localhost:8081 | mail-ingestion-service:8081 |
+| Decision Engine | localhost:8083 | decision-engine-service:8083 |
+| CRM Adapter | localhost:8084 | crm-adapter-service:8084 |
+| Notification Service | localhost:8085 | notification-service:8085 |
+| Demo CRM | localhost:8090 | demo-crm-service:8090 |
+| EspoCRM | http://localhost:8080 | host.docker.internal:8080 |
+| Laya (opcional) | localhost:8000 | laya:8000 si usa perfil ai |
+
+Angular usa URLs **relativas** y Nginx reenvía las llamadas a los microservicios. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
+
+### Laya opcional
+
+Laya no forma parte del arranque básico porque su checkpoint requiere recursos y descarga propia. Si deseas intentar contenerizarlo, configura en `.env` `AI_BASE_URL_DOCKER=http://laya:8000` y ejecuta `.\scripts\start.ps1 -WithAI`. No se ha validado el comportamiento del paquete/checkpoint dentro de este entorno Docker; revisa logs de Laya y el endpoint `/health`. Si Laya ya funciona en Windows, deja `AI_BASE_URL_DOCKER=http://host.docker.internal:8000` y ejecuta sin `-WithAI`.
+
+### Integraciones y datos existentes
+
+Las rutas de integración CRM, canales SMTP y perfiles ya guardados en PostgreSQL **no se reescriben** al cambiar a Docker. Corrige manualmente en Angular las URLs antiguas `http://localhost:8090` (Demo CRM) y `http://localhost:8080` (EspoCRM): usa `http://demo-crm-service:8090` y `http://host.docker.internal:8080`, respectivamente. Para Mailpit en el canal de notificaciones usa host `mailpit`, puerto 1025, sin autenticación ni TLS.
+
+EspoCRM sigue usando su MariaDB propia. Su correo SMTP saliente hacia Mailpit puede continuar usando `host.docker.internal:1025` con la excepción específica `emailServerAllowedAddressList` aplicada previamente al contenedor. No se conecta automáticamente un Gmail de entrada.
+
+### Validación y resolución de problemas
+
+```powershell
+docker compose config --quiet
+docker compose ps
+docker compose logs --tail=100 business-knowledge-service
+docker compose logs -f mail-ingestion-service decision-engine-service crm-adapter-service notification-service
+docker compose -p agnostic-espo -f compose.espocrm.yml ps
+```
+
+Si falla la compilación, ejecuta `docker compose build --no-cache frontend-angular` o `docker compose build business-knowledge-service`, según el servicio afectado. Para las pruebas académicas usa Maven/JDK 21 y ejecuta `mvn clean test` fuera de Docker; el Dockerfile omite las pruebas **solo durante el empaquetado de imágenes**.
+
+### Probar el flujo antes de integrar Gmail
+
+Consulta [Plan de pruebas de correo y end-to-end](docs/EMAIL_TEST_PLAN.md). El formulario Angular **Demo de correo** publica una solicitud REST, no descarga mensajes de una bandeja real. Mailpit simula la **recepción SMTP saliente**. La futura lectura de Gmail/IMAP es una fase de desarrollo independiente, no una funcionalidad completada por esta Dockerización.
+
+---
+
+## Arquitectura y especificación funcional existente
 
 AgnosticTicketRouter es una plataforma orientada a eventos para convertir solicitudes no estructuradas en **tickets estándar**, tomar decisiones configurables con reglas + IA y enviarlas a APIs externas sin acoplar el motor a un negocio o CRM concreto.
 
