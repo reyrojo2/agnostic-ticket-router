@@ -48,5 +48,11 @@ export class ApiService {
   updateNotificationTemplate(id: number, body: any) { return this.http.put(`${API.notifications}/api/v1/admin/notifications/templates/${id}`, body); }
   deleteNotificationTemplate(id: number) { return this.http.delete(`${API.notifications}/api/v1/admin/notifications/templates/${id}`); }
 
+  gmailStatus() { return this.http.get<any>('/api/v1/admin/gmail/status'); }
+  gmailAuthorize() { return this.http.get<{url:string}>('/api/v1/admin/gmail/authorize'); }
+  gmailSave(body:any) { return this.http.put<any>('/api/v1/admin/gmail/settings',body); }
+  gmailSync() { return this.http.post<any>('/api/v1/admin/gmail/sync',{}); }
+  gmailDisconnect() { return this.http.delete('/api/v1/admin/gmail/connection'); }
+  operationalMetrics() { return this.http.get<any>('/api/v1/admin/metrics/overview'); }
   submitEmail(body: any) { return this.http.post(`${API.intake}/api/v1/intake/emails`, body); }
 }
