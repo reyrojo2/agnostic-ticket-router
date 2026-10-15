@@ -43,7 +43,7 @@ import { ApiService } from '../core/api.service';
           <label>Perfil<input name="tprofile" [(ngModel)]="templateForm.profileCode" placeholder="* o TELCO_DEMO"></label>
           <label>Evento<select name="tevent" [(ngModel)]="templateForm.eventType"><option>EMAIL_RECEIVED</option><option>CRM_CREATED</option><option>REVIEW_REQUIRED</option><option>CRM_ERROR</option></select></label>
           <label>Canal<input name="tchannel" [(ngModel)]="templateForm.channelCode" required></label>
-          <label>Destinatario<input name="trecipient" [(ngModel)]="templateForm.recipientTemplate" required placeholder="{{recipient}}"></label>
+          <label>Destinatario<input name="trecipient" [(ngModel)]="templateForm.recipientTemplate" required [placeholder]="'{{recipient}}'"></label>
           <label class="span-2">Asunto<input name="tsubject" [(ngModel)]="templateForm.subjectTemplate" required></label>
           <label class="span-2">Cuerpo<textarea name="tbody" [(ngModel)]="templateForm.bodyTemplate" rows="8" required></textarea></label>
           <label class="check"><input name="tactive" [(ngModel)]="templateForm.active" type="checkbox"> Activa</label>
