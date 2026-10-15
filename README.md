@@ -91,6 +91,37 @@ Consulta [Plan de pruebas de correo y end-to-end](docs/EMAIL_TEST_PLAN.md). El f
 
 ---
 
+## EspoCRM principal y perfil visible en Angular
+
+La migración **V3** de CRM Adapter configura `ESPOCRM_LOCAL` como integración principal del perfil `TELCO_DEMO` y desactiva `DEMO_CRM` sin borrar la integración anterior. Crea la operación `POST /api/v1/Case`, con header `X-Api-Key` resuelto mediante `ENV:ESPOCRM_API_KEY`, sin guardar el token en PostgreSQL. Para evitar duplicados, la operación realiza un solo intento. Puedes ajustar el mapeo JSON desde Angular.
+
+**Antes de arrancar**, añade a tu `.env` (no se sube a Git):
+
+```dotenv
+ESPOCRM_API_KEY=LA_CLAVE_DE_TU_USUARIO_API_EN_ESPOCRM
+```
+
+La cuenta API de EspoCRM debe estar activa y tener permiso para crear `Case`. No se puede inferir la clave desde GitHub. Los casos que no puedan clasificarse completamente pueden necesitar SystemOne/Laya o revisión humana antes de enviarse al CRM.
+
+En PowerShell, con la rama del PR:
+
+```powershell
+git pull
+docker compose up -d --build crm-adapter-service frontend-angular
+docker compose logs --tail=80 crm-adapter-service
+```
+
+Para verificar las migraciones y la ruta:
+
+```powershell
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT code,base_url,active FROM crm_adapter.crm_integration;"
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT profile_code,integration_code,operation_code,active FROM crm_adapter.crm_route;"
+```
+
+**El perfil `TELCO_DEMO` ya existe en PostgreSQL**, no lo vuelvas a crear. Si Angular continúa sin mostrarlo, la pantalla Business Knowledge ahora muestra el código HTTP de la consulta `GET /api/v1/admin/profiles` y permite reintentar. Un `401` indica que debes cerrar sesión y volver a ingresar para obtener un JWT válido; `502/503` apunta al proxy/backend; `500` requiere examinar `docker compose logs business-knowledge-service`. La aparición del nombre `admin` en la barra lateral no garantiza que el token JWT siga vigente, pues Angular guarda la sesión en almacenamiento local.
+
+En DevTools de Chrome (F12 → Network), filtra `profiles`, recarga y revisa la pestaña **Response** y el código HTTP. Nunca compartas el header `Authorization` ni el contenido del token.
+
 ## Arquitectura y especificación funcional existente
 
 AgnosticTicketRouter es una plataforma orientada a eventos para convertir solicitudes no estructuradas en **tickets estándar**, tomar decisiones configurables con reglas + IA y enviarlas a APIs externas sin acoplar el motor a un negocio o CRM concreto.
