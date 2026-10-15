@@ -43,5 +43,20 @@
     "target": "http://localhost:8081",
     "secure": false,
     "changeOrigin": true
+  },
+  "/api/v1/admin/gmail": {
+    "target": "http://localhost:8070",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api/v1/gmail/oauth": {
+    "target": "http://localhost:8070",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/api/v1/admin/metrics": {
+    "target": "http://localhost:8071",
+    "secure": false,
+    "changeOrigin": true
   }
 }
