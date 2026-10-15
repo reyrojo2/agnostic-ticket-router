@@ -153,6 +153,34 @@ services:
       - notification-service
       - mail-ingestion-service
 
+  gmail-connector:
+    build: {context: ./gmail-connector}
+    restart: unless-stopped
+    environment:
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_ENCRYPTION_KEY: ${GMAIL_ENCRYPTION_KEY:-}
+      GMAIL_REDIRECT_URI: http://localhost:4200/api/v1/gmail/oauth/callback
+      GMAIL_POLL_SECONDS: ${GMAIL_POLL_SECONDS:-90}
+      MAIL_INGESTION_URL: http://mail-ingestion-service:8081/api/v1/intake/emails
+    volumes: [gmail_data:/data]
+    depends_on: [mail-ingestion-service]
+
+  observability-service:
+    build: {context: ./observability-service}
+    restart: unless-stopped
+    environment:
+      DB_URL_PYTHON: postgresql://${DB_USER:?required}:${DB_PASSWORD:?required}@postgres:5432/agnostic_router
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      REPORT_TIMEZONE: America/Lima
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
   laya:
     profiles: [ai]
     build: {context: ./laya, dockerfile: Dockerfile}
@@ -168,3 +196,4 @@ services:
 volumes:
   postgres_data:
   laya-models:
+  gmail_data:
