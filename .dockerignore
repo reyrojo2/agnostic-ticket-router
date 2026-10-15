@@ -1,0 +1,14 @@
+.git
+.gitignore
+.idea
+.vscode
+.env
+.env.*
+**/target
+**/node_modules
+**/dist
+**/.angular
+**/.venv
+**/__pycache__
+*.log
+espocrm-config-override.php
