@@ -1,0 +1,28 @@
+name: Docker build and compose validation
+on:
+  push:
+    branches: [main, feat/docker-full-stack]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create disposable CI credentials
+        shell: bash
+        run: |
+          cp .env.example .env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-db-password/' .env
+          sed -i 's/^RABBITMQ_PASSWORD=$/RABBITMQ_PASSWORD=ci-rabbit-password/' .env
+          sed -i 's/^ADMIN_PASSWORD=$/ADMIN_PASSWORD=ci-admin-password/' .env
+          sed -i 's/^APP_JWT_SECRET=$/APP_JWT_SECRET=ci-secret-with-more-than-thirty-two-bytes-123/' .env
+          sed -i 's/^ESPOCRM_DB_ROOT_PASSWORD=$/ESPOCRM_DB_ROOT_PASSWORD=ci-root/' .env
+          sed -i 's/^ESPOCRM_DB_PASSWORD=$/ESPOCRM_DB_PASSWORD=ci-espo/' .env
+          sed -i 's/^ESPOCRM_ADMIN_PASSWORD=$/ESPOCRM_ADMIN_PASSWORD=ci-admin-espo/' .env
+      - name: Validate Compose
+        run: |
+          docker compose config --quiet
+          docker compose -p agnostic-espo -f compose.espocrm.yml config --quiet
+      - name: Build all Java and Angular images
+        run: docker compose build business-knowledge-service decision-engine-service mail-ingestion-service crm-adapter-service notification-service demo-crm-service frontend-angular
