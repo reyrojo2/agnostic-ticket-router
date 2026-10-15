@@ -13,11 +13,17 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
   jpa:
+    properties:
+      hibernate:
+        default_schema: crm_adapter
     open-in-view: false
     hibernate:
       ddl-auto: validate
   flyway:
     enabled: true
+    create-schemas: true
+    default-schema: crm_adapter
+    schemas: crm_adapter
     table: flyway_history_crm
 
 app:
