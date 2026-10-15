@@ -13,11 +13,17 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
   jpa:
+    properties:
+      hibernate:
+        default_schema: notifications
     open-in-view: false
     hibernate:
       ddl-auto: validate
   flyway:
     enabled: true
+    create-schemas: true
+    default-schema: notifications
+    schemas: notifications
     table: flyway_history_notification
 
 app:
