@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
 
@@ -12,7 +12,7 @@ import { ApiService } from '../core/api.service';
       <section class="panel">
         <div class="panel-title"><h2>Integraciones</h2><button class="btn btn-secondary" (click)="newIntegration()">Nueva</button></div>
         <div class="list compact">
-          @for (item of integrations; track item.id) {
+          @for (item of integrations(); track item.id) {
             <button class="list-row" [class.selected]="item.id === selectedIntegrationId" (click)="selectIntegration(item)">
               <span><strong>{{ item.name }}</strong><small>{{ item.code }} · {{ item.authType }}</small></span><span class="badge">{{ item.active ? 'Activa' : 'Off' }}</span>
             </button>
@@ -37,7 +37,7 @@ import { ApiService } from '../core/api.service';
       <section class="panel">
         <div class="panel-title"><h2>Operaciones</h2><button class="btn btn-secondary" [disabled]="!selectedIntegrationId" (click)="newOperation()">Nueva</button></div>
         <div class="list compact">
-          @for (operation of operations; track operation.id) {
+          @for (operation of operations(); track operation.id) {
             <button class="list-row" [class.selected]="operation.id === operationForm.id" (click)="editOperation(operation)"><span><strong>{{ operation.code }}</strong><small>{{ operation.httpMethod }} {{ operation.pathTemplate }}</small></span><span>{{ operation.successStatusCodes }}</span></button>
           }
         </div>
@@ -64,7 +64,7 @@ import { ApiService } from '../core/api.service';
     <section class="panel lower">
       <div class="panel-title"><div><h2>Rutas de integración</h2><p class="muted">Una ruta puede ser general por perfil o condicionarse por una dimensión/opción.</p></div><button class="btn btn-secondary" (click)="newRoute()">Nueva</button></div>
       <div class="table-wrap"><table><thead><tr><th>Perfil</th><th>Condición</th><th>Integración</th><th>Operación</th><th>Prioridad</th><th></th></tr></thead><tbody>
-        @for (route of routes; track route.id) {<tr><td>{{route.profileCode}}</td><td>{{route.dimensionCode || 'DEFAULT'}} {{route.optionCode || ''}}</td><td>{{route.integrationCode}}</td><td>{{route.operationCode}}</td><td>{{route.priority}}</td><td><button class="link" (click)="editRoute(route)">Editar</button></td></tr>}
+        @for (route of routes(); track route.id) {<tr><td>{{route.profileCode}}</td><td>{{route.dimensionCode || 'DEFAULT'}} {{route.optionCode || ''}}</td><td>{{route.integrationCode}}</td><td>{{route.operationCode}}</td><td>{{route.priority}}</td><td><button class="link" (click)="editRoute(route)">Editar</button></td></tr>}
       </tbody></table></div>
       <form class="form-grid route-form" (ngSubmit)="saveRoute()">
         <label>Perfil<input name="rprofile" [(ngModel)]="routeForm.profileCode" required></label>
@@ -80,25 +80,25 @@ import { ApiService } from '../core/api.service';
   `
 })
 export class CrmComponent implements OnInit {
-  integrations:any[]=[]; operations:any[]=[]; routes:any[]=[];
+  integrations=signal<any[]>([]); operations=signal<any[]>([]); routes=signal<any[]>([]);
   selectedIntegrationId?:number;
   integrationForm:any=this.integrationDefaults(); operationForm:any=this.operationDefaults(); routeForm:any=this.routeDefaults();
   constructor(private readonly api:ApiService){}
   ngOnInit():void{this.reload();}
-  reload():void{this.api.crmIntegrations().subscribe(x=>this.integrations=x);this.api.crmRoutes().subscribe(x=>this.routes=x);}
-  selectIntegration(item:any):void{this.selectedIntegrationId=item.id;this.integrationForm={...item};this.api.crmOperations(item.id).subscribe(x=>this.operations=x);this.newOperation();}
-  newIntegration():void{this.selectedIntegrationId=undefined;this.integrationForm=this.integrationDefaults();this.operations=[];}
+  reload():void{this.api.crmIntegrations().subscribe(x=>this.integrations.set(x));this.api.crmRoutes().subscribe(x=>this.routes.set(x));}
+  selectIntegration(item:any):void{this.selectedIntegrationId=item.id;this.integrationForm={...item};this.api.crmOperations(item.id).subscribe(x=>this.operations.set(x));this.newOperation();}
+  newIntegration():void{this.selectedIntegrationId=undefined;this.integrationForm=this.integrationDefaults();this.operations.set([]);}
   saveIntegration():void{const c=this.integrationForm.id?this.api.updateCrmIntegration(this.integrationForm.id,this.integrationForm):this.api.createCrmIntegration(this.integrationForm);c.subscribe((x:any)=>{this.reload();this.selectIntegration(x);});}
   deleteIntegration():void{if(this.integrationForm.id)this.api.deleteCrmIntegration(this.integrationForm.id).subscribe(()=>{this.newIntegration();this.reload();});}
   newOperation():void{this.operationForm=this.operationDefaults();}
   editOperation(x:any):void{this.operationForm={...x};}
-  saveOperation():void{if(!this.selectedIntegrationId)return;const c=this.operationForm.id?this.api.updateCrmOperation(this.operationForm.id,this.operationForm):this.api.createCrmOperation(this.selectedIntegrationId,this.operationForm);c.subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations=x);this.newOperation();});}
-  deleteOperation():void{if(this.operationForm.id)this.api.deleteCrmOperation(this.operationForm.id).subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations=x);this.newOperation();});}
+  saveOperation():void{if(!this.selectedIntegrationId)return;const c=this.operationForm.id?this.api.updateCrmOperation(this.operationForm.id,this.operationForm):this.api.createCrmOperation(this.selectedIntegrationId,this.operationForm);c.subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.newOperation();});}
+  deleteOperation():void{if(this.operationForm.id)this.api.deleteCrmOperation(this.operationForm.id).subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.newOperation();});}
   newRoute():void{this.routeForm=this.routeDefaults();}
   editRoute(x:any):void{this.routeForm={...x};}
   saveRoute():void{const c=this.routeForm.id?this.api.updateCrmRoute(this.routeForm.id,this.routeForm):this.api.createCrmRoute(this.routeForm);c.subscribe(()=>{this.reload();this.newRoute();});}
   deleteRoute():void{if(this.routeForm.id)this.api.deleteCrmRoute(this.routeForm.id).subscribe(()=>{this.reload();this.newRoute();});}
   private integrationDefaults(){return{code:'',name:'',baseUrl:'',authType:'NONE',usernameRef:'',secretRef:'',apiKeyName:'',tokenUrl:'',scope:'',defaultHeadersJson:'{}',active:true};}
-  private operationDefaults(){return{code:'CREATE_TICKET',httpMethod:'POST',pathTemplate:'/api/tickets',contentType:'application/json',headersTemplateJson:'{}',bodyTemplate:'{\n  "title": "{{subject}}",\n  "description": "{{body}}"\n}',successStatusCodes:'200,201,202',externalIdPath:'data.id',timeoutMs:15000,maxAttempts:3,retryDelayMs:1000,active:true};}
-  private routeDefaults(){return{profileCode:'TELCO_DEMO',dimensionCode:'',optionCode:'',integrationCode:'',operationCode:'CREATE_TICKET',priority:100,active:true};}
+  private operationDefaults(){return{code:'CREATE_CASE',httpMethod:'POST',pathTemplate:'/api/v1/Case',contentType:'application/json',headersTemplateJson:'{}',bodyTemplate:'{\n  "title": "{{subject}}",\n  "description": "{{body}}"\n}',successStatusCodes:'200,201',externalIdPath:'id',timeoutMs:15000,maxAttempts:1,retryDelayMs:1000,active:true};}
+  private routeDefaults(){return{profileCode:'TELCO_DEMO',dimensionCode:'',optionCode:'',integrationCode:'ESPOCRM_LOCAL',operationCode:'CREATE_CASE',priority:100,active:true};}
 }

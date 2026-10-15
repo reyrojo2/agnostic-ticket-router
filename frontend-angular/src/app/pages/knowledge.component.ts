@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIf } from '@angular/common';
 import { ApiService } from '../core/api.service';
@@ -11,12 +11,12 @@ import { ApiService } from '../core/api.service';
       <div><p class="eyebrow">Motor configurable</p><h1>Business Knowledge</h1><p class="muted">El motor no conoce productos ni rubros: consume perfiles, dimensiones, opciones y reglas.</p></div>
     </header>
 
-    <div *ngIf="loadError" class="alert error" role="alert">{{ loadError }} <button type="button" class="btn btn-secondary" (click)="loadProfiles()">Reintentar</button></div>
+    <div *ngIf="loadError()" class="alert error" role="alert">{{ loadError() }} <button type="button" class="btn btn-secondary" (click)="loadProfiles()">Reintentar</button></div>
     <div class="two-column">
       <section class="panel">
         <div class="panel-title"><h2>Perfiles</h2><button class="btn btn-secondary" (click)="newProfile()">Nuevo</button></div>
         <div class="list">
-          @for (profile of profiles; track profile.id) {
+          @for (profile of profiles(); track profile.id) {
             <button class="list-row" [class.selected]="profile.id === selectedProfileId" (click)="selectProfile(profile)">
               <span><strong>{{ profile.name }}</strong><small>{{ profile.code }} · v{{ profile.version }}</small></span>
               <span class="badge" [class.off]="!profile.active">{{ profile.active ? 'Activo' : 'Inactivo' }}</span>
@@ -36,7 +36,7 @@ import { ApiService } from '../core/api.service';
         <div class="panel-title"><h2>Dimensiones</h2><button class="btn btn-secondary" [disabled]="!selectedProfileId" (click)="newDimension()">Nueva</button></div>
         @if (!selectedProfileId) { <p class="empty">Selecciona un perfil.</p> }
         <div class="list compact">
-          @for (dimension of dimensions; track dimension.id) {
+          @for (dimension of dimensions(); track dimension.id) {
             <button class="list-row" [class.selected]="dimension.id === selectedDimensionId" (click)="selectDimension(dimension)">
               <span><strong>{{ dimension.executionOrder }}. {{ dimension.name }}</strong><small>{{ dimension.code }} · {{ dimension.primitiveType }}</small></span>
               <span class="badge">{{ dimension.required ? 'Obligatoria' : 'Opcional' }}</span>
@@ -67,7 +67,7 @@ import { ApiService } from '../core/api.service';
         <section class="panel">
           <div class="panel-title"><h2>Opciones</h2><button class="btn btn-secondary" (click)="newOption()">Nueva</button></div>
           <div class="list compact">
-            @for (option of options; track option.id) {
+            @for (option of options(); track option.id) {
               <button class="list-row" [class.selected]="option.id === optionForm.id" (click)="editOption(option)"><span><strong>{{ option.name }}</strong><small>{{ option.code }}</small></span><span>{{ option.priority }}</span></button>
             }
           </div>
@@ -86,7 +86,7 @@ import { ApiService } from '../core/api.service';
         <section class="panel">
           <div class="panel-title"><h2>Reglas</h2><button class="btn btn-secondary" (click)="newRule()">Nueva</button></div>
           <div class="list compact">
-            @for (rule of rules; track rule.id) {
+            @for (rule of rules(); track rule.id) {
               <button class="list-row" [class.selected]="rule.id === ruleForm.id" (click)="editRule(rule)"><span><strong>{{ rule.code }}</strong><small>{{ rule.strength }} → {{ rule.targetOptionCode }}</small></span><span>{{ rule.ruleType }}</span></button>
             }
           </div>
@@ -106,11 +106,11 @@ import { ApiService } from '../core/api.service';
   `
 })
 export class KnowledgeComponent implements OnInit {
-  loadError = '';
-  profiles: any[] = [];
-  dimensions: any[] = [];
-  options: any[] = [];
-  rules: any[] = [];
+  loadError = signal('');
+  profiles = signal<any[]>([]);
+  dimensions = signal<any[]>([]);
+  options = signal<any[]>([]);
+  rules = signal<any[]>([]);
   selectedProfileId?: number;
   selectedDimensionId?: number;
 
@@ -124,44 +124,44 @@ export class KnowledgeComponent implements OnInit {
   ngOnInit(): void { this.loadProfiles(); }
 
   loadProfiles(): void {
-    this.loadError = '';
+    this.loadError.set('');
     this.api.profiles().subscribe({
-      next: data => { this.profiles = data; },
-      error: err => { this.loadError = `No se pudieron obtener perfiles (HTTP ${err.status || 'sin conexión'}). Revisa sesión, proxy y logs de Business Knowledge.`; }
+      next: data => { this.profiles.set(data); },
+      error: err => { this.loadError.set(`No se pudieron obtener perfiles (HTTP ${err.status || 'sin conexión'}). Revisa sesión, proxy y logs de Business Knowledge.`); }
     });
   }
   selectProfile(profile: any): void {
     this.selectedProfileId = profile.id;
     this.profileForm = { ...profile };
     this.selectedDimensionId = undefined;
-    this.options = [];
-    this.rules = [];
-    this.api.dimensions(profile.id).subscribe(data => this.dimensions = data);
+    this.options.set([]);
+    this.rules.set([]);
+    this.api.dimensions(profile.id).subscribe(data => this.dimensions.set(data));
   }
   newProfile(): void { this.profileForm = this.profileDefaults(); }
   saveProfile(): void {
     const call = this.profileForm.id ? this.api.updateProfile(this.profileForm.id, this.profileForm) : this.api.createProfile(this.profileForm);
     call.subscribe(() => this.loadProfiles());
   }
-  deleteProfile(): void { if (this.profileForm.id) this.api.deleteProfile(this.profileForm.id).subscribe(() => { this.selectedProfileId = undefined; this.dimensions=[]; this.newProfile(); this.loadProfiles(); }); }
+  deleteProfile(): void { if (this.profileForm.id) this.api.deleteProfile(this.profileForm.id).subscribe(() => { this.selectedProfileId = undefined; this.dimensions.set([]); this.newProfile(); this.loadProfiles(); }); }
 
   selectDimension(dimension: any): void {
     this.selectedDimensionId = dimension.id;
     this.dimensionForm = { ...dimension };
     this.loadOptionsAndRules();
   }
-  newDimension(): void { this.selectedDimensionId = undefined; this.dimensionForm = this.dimensionDefaults(); this.options=[]; this.rules=[]; }
+  newDimension(): void { this.selectedDimensionId = undefined; this.dimensionForm = this.dimensionDefaults(); this.options.set([]); this.rules.set([]); }
   saveDimension(): void {
     if (!this.selectedProfileId) return;
     const call = this.dimensionForm.id ? this.api.updateDimension(this.dimensionForm.id, this.dimensionForm) : this.api.createDimension(this.selectedProfileId, this.dimensionForm);
-    call.subscribe((saved: any) => { this.api.dimensions(this.selectedProfileId!).subscribe(data => this.dimensions=data); this.selectDimension(saved); });
+    call.subscribe((saved: any) => { this.api.dimensions(this.selectedProfileId!).subscribe(data => this.dimensions.set(data)); this.selectDimension(saved); });
   }
-  deleteDimension(): void { if(this.dimensionForm.id) this.api.deleteDimension(this.dimensionForm.id).subscribe(() => { this.selectedDimensionId=undefined; this.options=[]; this.rules=[]; this.api.dimensions(this.selectedProfileId!).subscribe(data=>this.dimensions=data); this.dimensionForm=this.dimensionDefaults(); }); }
+  deleteDimension(): void { if(this.dimensionForm.id) this.api.deleteDimension(this.dimensionForm.id).subscribe(() => { this.selectedDimensionId=undefined; this.options.set([]); this.rules.set([]); this.api.dimensions(this.selectedProfileId!).subscribe(data=>this.dimensions.set(data)); this.dimensionForm=this.dimensionDefaults(); }); }
 
   loadOptionsAndRules(): void {
     if (!this.selectedDimensionId) return;
-    this.api.options(this.selectedDimensionId).subscribe(data => this.options = data);
-    this.api.rules(this.selectedDimensionId).subscribe(data => this.rules = data);
+    this.api.options(this.selectedDimensionId).subscribe(data => this.options.set(data));
+    this.api.rules(this.selectedDimensionId).subscribe(data => this.rules.set(data));
   }
   newOption(): void { this.optionForm = this.optionDefaults(); }
   editOption(option: any): void { this.optionForm = { ...option }; }

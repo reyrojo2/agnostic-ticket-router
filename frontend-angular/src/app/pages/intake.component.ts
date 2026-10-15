@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { JsonPipe } from '@angular/common';
 import { ApiService } from '../core/api.service';
@@ -20,14 +20,14 @@ import { ApiService } from '../core/api.service';
       </section>
       <section class="panel">
         <h2>Resultado de ingreso</h2>
-        @if(result){<pre>{{result | json}}</pre>} @else {<p class="empty">Todavía no se ha enviado un correo.</p>}
+        @if(result()){<pre>{{result() | json}}</pre>} @else {<p class="empty">Todavía no se ha enviado un correo.</p>}
         <p class="muted">El endpoint devuelve el requestId. El resto del flujo ocurre de manera asíncrona.</p>
       </section>
     </div>
   `
 })
 export class IntakeComponent {
-  result:any;
+  result = signal<any>(null);
   form:any={
     profileCode:'TELCO_DEMO',
     from:'cliente@example.com',
@@ -38,5 +38,5 @@ export class IntakeComponent {
     metadata:{source:'ANGULAR_DEMO'}
   };
   constructor(private readonly api:ApiService){}
-  submit():void{this.api.submitEmail(this.form).subscribe({next:x=>this.result=x,error:e=>this.result={error:e.message}});}
+  submit():void{this.api.submitEmail(this.form).subscribe({next:x=>this.result.set(x),error:e=>this.result.set({error:e.message})});}
 }

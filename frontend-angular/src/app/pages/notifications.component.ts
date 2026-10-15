@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
 
@@ -12,7 +12,7 @@ import { ApiService } from '../core/api.service';
       <section class="panel">
         <div class="panel-title"><h2>Canales</h2><button class="btn btn-secondary" (click)="newChannel()">Nuevo</button></div>
         <div class="list compact">
-          @for (item of channels; track item.id) {
+          @for (item of channels(); track item.id) {
             <button class="list-row" [class.selected]="item.id===channelForm.id" (click)="editChannel(item)"><span><strong>{{item.name}}</strong><small>{{item.code}} · {{item.type}}</small></span><span class="badge">{{item.active?'Activo':'Off'}}</span></button>
           }
         </div>
@@ -35,7 +35,7 @@ import { ApiService } from '../core/api.service';
       <section class="panel">
         <div class="panel-title"><h2>Plantillas</h2><button class="btn btn-secondary" (click)="newTemplate()">Nueva</button></div>
         <div class="list compact">
-          @for (item of templates; track item.id) {
+          @for (item of templates(); track item.id) {
             <button class="list-row" [class.selected]="item.id===templateForm.id" (click)="editTemplate(item)"><span><strong>{{item.eventType}}</strong><small>{{item.profileCode}} · {{item.channelCode}}</small></span><span class="badge">{{item.active?'Activa':'Off'}}</span></button>
           }
         </div>
@@ -59,11 +59,11 @@ import { ApiService } from '../core/api.service';
   `
 })
 export class NotificationsComponent implements OnInit {
-  channels:any[]=[]; templates:any[]=[];
+  channels=signal<any[]>([]); templates=signal<any[]>([]);
   channelForm:any=this.channelDefaults(); templateForm:any=this.templateDefaults();
   constructor(private readonly api:ApiService){}
   ngOnInit():void{this.reload();}
-  reload():void{this.api.notificationChannels().subscribe(x=>this.channels=x);this.api.notificationTemplates().subscribe(x=>this.templates=x);}
+  reload():void{this.api.notificationChannels().subscribe(x=>this.channels.set(x));this.api.notificationTemplates().subscribe(x=>this.templates.set(x));}
   newChannel():void{this.channelForm=this.channelDefaults();}
   editChannel(x:any):void{this.channelForm={...x};}
   saveChannel():void{const c=this.channelForm.id?this.api.updateNotificationChannel(this.channelForm.id,this.channelForm):this.api.createNotificationChannel(this.channelForm);c.subscribe(()=>{this.reload();this.newChannel();});}
