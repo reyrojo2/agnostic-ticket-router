@@ -122,6 +122,54 @@ docker compose exec postgres psql -U router -d agnostic_router -c "SELECT profil
 
 En DevTools de Chrome (F12 → Network), filtra `profiles`, recarga y revisa la pestaña **Response** y el código HTTP. Nunca compartas el header `Authorization` ni el contenido del token.
 
+## Consola operativa: Gmail, EspoCRM, respuestas y métricas (fase de integración)
+
+El menú **Buzón Gmail** conecta una cuenta de prueba con autorización OAuth 2.0 de solo lectura. El conector publica los mensajes nuevos en `mail-ingestion-service`, que mantiene el flujo RabbitMQ → Decision Engine → CRM Adapter. Ya no es necesario enviar solicitudes manuales desde «Demo de correo».
+
+Antes de iniciar el conector, configura la **Gmail API** y la pantalla de consentimiento OAuth en Google Cloud. Crea un cliente OAuth de tipo **Web application** con URI de redirección exacta `http://localhost:4200/api/v1/gmail/oauth/callback`. Agrega tu cuenta de pruebas como usuario de prueba si Google lo requiere. No publiques el `client_secret`.
+
+Añade a tu archivo privado `.env`:
+
+```dotenv
+GMAIL_CLIENT_ID=TU_CLIENT_ID_DE_GOOGLE
+GMAIL_CLIENT_SECRET=TU_SECRETO_GOOGLE
+GMAIL_ENCRYPTION_KEY=CLAVE_FERNET
+GMAIL_POLL_SECONDS=90
+ESPOCRM_API_KEY=CLAVE_API_DE_USUARIO_ESPOCRM
+```
+
+La clave Fernet se genera localmente con Python y `cryptography`:
+
+```powershell
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**No ejecutes varias instancias del conector sobre el mismo buzón**. En este MVP se utiliza una sola cuenta de prueba y una base SQLite persistente para los tokens y los ID de mensajes procesados. La consulta está deshabilitada por defecto hasta que se habilite desde Angular. Los mensajes se leen pero no se marcan como leídos. El filtro `in:inbox is:unread` también puede recuperar mensajes viejos; usa una bandeja dedicada y revisa el filtro antes de activarlo. La deduplicación es local al conector y no asegura exactamente una creación de ticket en caso de caída entre publicación y registro.
+
+El dashboard ahora consulta `observability-service`, que consume tres eventos de RabbitMQ: correo recibido, ticket estandarizado y resultado CRM. Guarda **solo identificador, fecha, clasificación resumida y estado**, no almacena cuerpo ni asunto del correo. Muestra los 7 días recientes (zona America/Lima), reglas vs IA, decisiones no aceptadas, revisión, casos creados y errores. Los eventos emitidos antes de desplegar observabilidad **no se reconstruyen retroactivamente**. El estado `pendiente` puede incluir solicitudes fallidas en Decision Engine para las que no se emitió un ticket estándar.
+
+### Respuestas programadas en Angular
+
+El menú **Notificaciones** configura canales SMTP y plantillas por perfil/evento. Para pruebas:
+- Canal SMTP: código `MAILPIT_LOCAL`, host `mailpit`, puerto `1025`, From `no-reply@demo.test`, Auth y STARTTLS **desactivados**.
+- Plantilla `EMAIL_RECEIVED`: acuse de recibo a `{{from}}`.
+- Plantilla `CRM_CREATED`: confirmación con `{{data.externalTicketId}}` al destinatario `{{recipient}}`.
+- Plantilla `REVIEW_REQUIRED`: informar que la solicitud requiere revisión sin afirmar que se creó un Case.
+- Plantilla `CRM_ERROR`: notificar que la integración falló sin afirmar éxito.
+
+Los eventos ya se generan en Java; para enviar SMTP debes **seleccionar el canal SMTP en cada plantilla y guardar**. Por defecto las plantillas históricas envían al canal LOG, por lo que no se envían correos reales ni de prueba automáticamente. Para producción será necesaria una política explícita de remitentes, plantillas, límites y manejo de errores de entrega. Esta fase no implementa un calendario de envíos diferidos.
+
+### Reconstrucción
+
+```powershell
+git pull
+docker compose up -d --build gmail-connector observability-service frontend-angular
+docker compose ps
+docker compose logs --tail=80 gmail-connector observability-service
+```
+
+Verifica en Angular `/gmail` y en el dashboard `/`. La conexión OAuth y la prueba end-to-end con Gmail y EspoCRM **dependen de tus credenciales privadas y requieren validación local**; el CI solo valida compilación, no la conexión real.
+
 ## Arquitectura y especificación funcional existente
 
 AgnosticTicketRouter es una plataforma orientada a eventos para convertir solicitudes no estructuradas en **tickets estándar**, tomar decisiones configurables con reglas + IA y enviarlas a APIs externas sin acoplar el motor a un negocio o CRM concreto.
