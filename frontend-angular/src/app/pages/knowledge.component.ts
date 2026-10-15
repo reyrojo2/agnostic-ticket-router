@@ -1,15 +1,17 @@
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { NgIf } from '@angular/common';
 import { ApiService } from '../core/api.service';
 
 @Component({
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, NgIf],
   template: `
     <header class="page-header">
       <div><p class="eyebrow">Motor configurable</p><h1>Business Knowledge</h1><p class="muted">El motor no conoce productos ni rubros: consume perfiles, dimensiones, opciones y reglas.</p></div>
     </header>
 
+    <div *ngIf="loadError" class="alert error" role="alert">{{ loadError }} <button type="button" class="btn btn-secondary" (click)="loadProfiles()">Reintentar</button></div>
     <div class="two-column">
       <section class="panel">
         <div class="panel-title"><h2>Perfiles</h2><button class="btn btn-secondary" (click)="newProfile()">Nuevo</button></div>
@@ -104,6 +106,7 @@ import { ApiService } from '../core/api.service';
   `
 })
 export class KnowledgeComponent implements OnInit {
+  loadError = '';
   profiles: any[] = [];
   dimensions: any[] = [];
   options: any[] = [];
@@ -120,7 +123,13 @@ export class KnowledgeComponent implements OnInit {
 
   ngOnInit(): void { this.loadProfiles(); }
 
-  loadProfiles(): void { this.api.profiles().subscribe(data => this.profiles = data); }
+  loadProfiles(): void {
+    this.loadError = '';
+    this.api.profiles().subscribe({
+      next: data => { this.profiles = data; },
+      error: err => { this.loadError = `No se pudieron obtener perfiles (HTTP ${err.status || 'sin conexión'}). Revisa sesión, proxy y logs de Business Knowledge.`; }
+    });
+  }
   selectProfile(profile: any): void {
     this.selectedProfileId = profile.id;
     this.profileForm = { ...profile };
