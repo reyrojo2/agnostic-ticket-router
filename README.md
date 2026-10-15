@@ -47,7 +47,33 @@ Las rutas de integración CRM, canales SMTP y perfiles ya guardados en PostgreSQ
 
 EspoCRM sigue usando su MariaDB propia. Su correo SMTP saliente hacia Mailpit puede continuar usando `host.docker.internal:1025` con la excepción específica `emailServerAllowedAddressList` aplicada previamente al contenedor. No se conecta automáticamente un Gmail de entrada.
 
-### Validación y resolución de problemas
+### Correcciones de arranque: Flyway y Decision Engine
+
+Los servicios CRM Adapter y Notification fallaban al intentar crear sus tablas Flyway de historial en el esquema compartido `public`. Ahora cada módulo dispone de un esquema propio: `crm_adapter` y `notifications`. Business Knowledge conserva `public`, incluyendo el perfil `TELCO_DEMO`. Decision Engine también corrige el nombre duplicado del bean `knowledgeClient`.
+
+**No se eliminan datos de `public`.** Si existen tablas heredadas `public.crm_*` o `public.notification_*` con configuraciones, **no se copian automáticamente** a los nuevos esquemas. Antes de migrarlas, revisa su contenido y respaldo. Los scripts Flyway crean registros de ejemplo en los nuevos esquemas.
+
+Desde la rama `feat/docker-full-stack`, con Docker Desktop encendido:
+
+```powershell
+git pull
+docker compose up -d --build crm-adapter-service notification-service decision-engine-service
+docker compose ps
+docker compose logs --tail=50 crm-adapter-service notification-service decision-engine-service
+```
+
+Comprobar los datos (ajusta el usuario si no es `router`):
+
+```powershell
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_name IN ('decision_profile','crm_integration','notification_channel') ORDER BY 1,2;"
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT code, active FROM public.decision_profile;"
+```
+
+La configuración de `DEMO_CRM` puede necesitar sustituir su URL antigua `localhost:8090` por `http://demo-crm-service:8090` desde Angular. EspoCRM debe alcanzarse mediante `http://host.docker.internal:8080` desde el contenedor CRM Adapter.
+
+Si Angular no muestra `TELCO_DEMO` aunque exista en SQL, inspecciona la respuesta HTTP de `/api/v1/admin/profiles` en DevTools antes de modificar la base de datos.
+
+## Validación y resolución de problemas
 
 ```powershell
 docker compose config --quiet
