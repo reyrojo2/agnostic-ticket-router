@@ -9,8 +9,8 @@ import org.springframework.web.client.RestClient;
 @Configuration
 @EnableConfigurationProperties(DecisionProperties.class)
 public class ClientConfig {
-    @Bean("knowledgeClient")
-    RestClient knowledgeClient(DecisionProperties properties) {
+    @Bean("knowledgeRestClient")
+    RestClient knowledgeRestClient(DecisionProperties properties) {
         return RestClient.builder().baseUrl(properties.knowledge().baseUrl()).build();
     }
 
