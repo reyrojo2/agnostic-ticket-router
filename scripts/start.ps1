@@ -13,6 +13,8 @@ try {
     $options += @('up', '-d', '--build')
     & docker @options
     if ($LASTEXITCODE -ne 0) { throw 'Fallo al iniciar la plataforma.' }
+    Write-Host 'Eureka: http://localhost:8761'
+    Write-Host 'Gateway: http://localhost:8088/actuator/health'
     Write-Host 'Angular: http://localhost:4200'
     Write-Host 'EspoCRM: http://localhost:8080'
     Write-Host 'RabbitMQ: http://localhost:15672'

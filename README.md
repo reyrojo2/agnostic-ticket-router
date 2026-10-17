@@ -1,6 +1,6 @@
 # AgnosticTicketRouter — Docker Compose y MVP académico
 
-AgnosticTicketRouter recibe solicitudes no estructuradas, las transforma en eventos, aplica reglas/IA y envía tickets mediante un adaptador CRM configurable. El **arranque recomendado** para desarrollo y demostración es Docker Desktop, sin Eureka.
+AgnosticTicketRouter recibe solicitudes no estructuradas, las transforma en eventos, aplica reglas/IA y envía tickets mediante un adaptador CRM configurable. El **arranque recomendado** para desarrollo y demostración es Docker Desktop, con Spring Cloud Gateway y Eureka.
 
 ## Arranque en Windows con Docker Desktop
 
@@ -13,7 +13,7 @@ AgnosticTicketRouter recibe solicitudes no estructuradas, las transforma en even
 docker compose ps
 ```
 
-4. Abre [Angular](http://localhost:4200), [EspoCRM](http://localhost:8080), [RabbitMQ](http://localhost:15672) y [Mailpit](http://localhost:8025).
+4. Abre [Angular](http://localhost:4200), [Eureka](http://localhost:8761), [Gateway](http://localhost:8088/actuator/health), [EspoCRM](http://localhost:8080), [RabbitMQ](http://localhost:15672) y [Mailpit](http://localhost:8025).
 5. Para detener **sin borrar datos**, ejecuta `.\scripts\stop.ps1`. No uses `docker compose down -v`.
 
 El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic-ticket-router`) reúne PostgreSQL, RabbitMQ, Mailpit, seis microservicios Java y Angular; el proyecto separado `agnostic-espo` mantiene EspoCRM y su MariaDB, preservando sus volúmenes existentes. El primer build requiere descargar imágenes, dependencias Maven y paquetes npm, y puede tardar varios minutos.
@@ -23,6 +23,8 @@ El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic
 | Componente | Windows | Desde otro contenedor del stack |
 | --- | --- | --- |
 | Angular + proxy Nginx | http://localhost:4200 | frontend-angular:80 |
+| Eureka Server | http://localhost:8761 | eureka-server:8761 |
+| Spring Cloud Gateway | http://localhost:8088 | api-gateway:8088 |
 | PostgreSQL | localhost:5433 | postgres:5432 |
 | RabbitMQ / administración | localhost:5672 / http://localhost:15672 | rabbitmq:5672 |
 | Mailpit SMTP / UI | localhost:1025 / http://localhost:8025 | mailpit:1025 |
@@ -35,7 +37,7 @@ El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic
 | EspoCRM | http://localhost:8080 | host.docker.internal:8080 |
 | Laya (opcional) | localhost:8000 | laya:8000 si usa perfil ai |
 
-Angular usa URLs **relativas** y Nginx reenvía las llamadas a los microservicios. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
+Angular usa URLs **relativas** y Nginx reenvía las llamadas a **Spring Cloud Gateway**, que descubre los cinco servicios Java mediante Eureka y conecta los auxiliares Python mediante Docker DNS. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
 
 ### Laya opcional
 
@@ -144,7 +146,7 @@ La clave Fernet se genera localmente con Python y `cryptography`:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-**No ejecutes varias instancias del conector sobre el mismo buzón**. En este MVP se utiliza una sola cuenta de prueba y una base SQLite persistente para los tokens y los ID de mensajes procesados. La consulta está deshabilitada por defecto hasta que se habilite desde Angular. Los mensajes se leen pero no se marcan como leídos. El filtro `in:inbox is:unread` también puede recuperar mensajes viejos; usa una bandeja dedicada y revisa el filtro antes de activarlo. La deduplicación es local al conector y no asegura exactamente una creación de ticket en caso de caída entre publicación y registro.
+**No ejecutes varias instancias del conector sobre el mismo buzón**. En este MVP se utiliza una sola cuenta de prueba y una base SQLite persistente para los tokens y los ID de mensajes procesados. La consulta está deshabilitada por defecto hasta que se habilite desde Angular. Los mensajes se leen pero no se marcan como leídos. La consola Gmail ofrece filtros legibles: «No leídos», «Últimas 24 horas», «Toda la bandeja», y asunto opcional. Si el asunto está vacío, se aceptan todos los asuntos. La consulta de toda la bandeja puede procesar correos antiguos: usa un buzón dedicado. La deduplicación es local al conector y no asegura exactamente una creación de ticket en caso de caída entre publicación y registro.
 
 El dashboard ahora consulta `observability-service`, que consume tres eventos de RabbitMQ: correo recibido, ticket estandarizado y resultado CRM. Guarda **solo identificador, fecha, clasificación resumida y estado**, no almacena cuerpo ni asunto del correo. Muestra los 7 días recientes (zona America/Lima), reglas vs IA, decisiones no aceptadas, revisión, casos creados y errores. Los eventos emitidos antes de desplegar observabilidad **no se reconstruyen retroactivamente**. El estado `pendiente` puede incluir solicitudes fallidas en Decision Engine para las que no se emitió un ticket estándar.
 
@@ -699,3 +701,27 @@ La versión ya implementa configuración genérica para REST/JSON, notificación
 - observabilidad distribuida (trace/correlation ID).
 
 Estas limitaciones no afectan la demostración académica de Spring, REST, persistencia, seguridad, Angular, RabbitMQ y arquitectura de microservicios.
+
+
+## Spring Cloud (Gateway y Eureka)
+
+Se incorporaron Spring Cloud **2024.0.3** con Spring Boot **3.4.5**, el servicio `eureka-server` (8761) y `api-gateway` (8088). Los cinco servicios Java principales se registran en Eureka; Decision Engine consulta Business Knowledge mediante `@LoadBalanced RestClient.Builder` y el nombre lógico `http://business-knowledge-service`.
+
+- `http://localhost:8761`: comprobar las aplicaciones registradas, incluido Gateway.
+- `http://localhost:8088/actuator/health`: salud del Gateway.
+- `http://localhost:4200`: Nginx redirige `/api/**` a Gateway; Angular no requiere nuevas URLs.
+- El Gateway envía solicitudes hacia Java con rutas `lb://` y hacia Python (Gmail y Observability) mediante nombres Docker. Python no se registra automáticamente en Eureka.
+- RabbitMQ mantiene los eventos `email.received`, `ticket.standardized` y `system.event`. No se modifica EspoCRM ni su base MariaDB.
+
+### Comprobación en Windows
+
+```powershell
+git switch main
+git pull --ff-only
+docker compose -p agnostic-espo -f compose.espocrm.yml up -d
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=80 eureka-server api-gateway decision-engine-service
+```
+
+No ejecutes `docker compose down -v`: elimina volúmenes y puede destruir datos de PostgreSQL. Prueba el flujo Gmail → RabbitMQ → EspoCRM otra vez; GitHub Actions comprueba compilación, pero no conoce tus secretos ni puede validar el flujo real de tu cuenta Gmail.
