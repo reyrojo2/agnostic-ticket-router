@@ -33,6 +33,30 @@ services:
     restart: unless-stopped
     ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
 
+  eureka-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: eureka-server}
+    restart: unless-stopped
+    ports: ["127.0.0.1:8761:8761"]
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: api-gateway}
+    restart: unless-stopped
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    ports: ["127.0.0.1:8088:8088"]
+    depends_on:
+      - eureka-server
+      - business-knowledge-service
+      - crm-adapter-service
+      - notification-service
+      - mail-ingestion-service
+
   business-knowledge-service:
     build:
       context: .
@@ -40,6 +64,7 @@ services:
       args: {SERVICE: business-knowledge-service}
     restart: unless-stopped
     environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
       DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
       DB_USER: ${DB_USER:?required}
       DB_PASSWORD: ${DB_PASSWORD:?required}
@@ -59,11 +84,12 @@ services:
       args: {SERVICE: decision-engine-service}
     restart: unless-stopped
     environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_USER:?required}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
-      KNOWLEDGE_BASE_URL: http://business-knowledge-service:8082
+      KNOWLEDGE_BASE_URL: http://business-knowledge-service
       AI_BASE_URL: ${AI_BASE_URL_DOCKER:-http://host.docker.internal:8000}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-multilingual}
@@ -80,6 +106,7 @@ services:
       args: {SERVICE: mail-ingestion-service}
     restart: unless-stopped
     environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_USER:?required}
@@ -97,6 +124,7 @@ services:
     restart: unless-stopped
     env_file: [.env]
     environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
       DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
       DB_USER: ${DB_USER:?required}
       DB_PASSWORD: ${DB_PASSWORD:?required}
@@ -119,6 +147,7 @@ services:
     restart: unless-stopped
     env_file: [.env]
     environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
       DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
       DB_USER: ${DB_USER:?required}
       DB_PASSWORD: ${DB_PASSWORD:?required}
@@ -152,6 +181,7 @@ services:
       - crm-adapter-service
       - notification-service
       - mail-ingestion-service
+      - api-gateway
 
   gmail-connector:
     build: {context: ./gmail-connector}

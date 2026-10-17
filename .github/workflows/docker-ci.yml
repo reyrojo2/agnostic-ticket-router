@@ -20,9 +20,16 @@ jobs:
           sed -i 's/^ESPOCRM_DB_ROOT_PASSWORD=$/ESPOCRM_DB_ROOT_PASSWORD=ci-root/' .env
           sed -i 's/^ESPOCRM_DB_PASSWORD=$/ESPOCRM_DB_PASSWORD=ci-espo/' .env
           sed -i 's/^ESPOCRM_ADMIN_PASSWORD=$/ESPOCRM_ADMIN_PASSWORD=ci-admin-espo/' .env
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Compile and test Maven modules
+        run: mvn -B -ntp test
       - name: Validate Compose
         run: |
           docker compose config --quiet
           docker compose -p agnostic-espo -f compose.espocrm.yml config --quiet
       - name: Build all Java and Angular images
-        run: docker compose build business-knowledge-service decision-engine-service mail-ingestion-service crm-adapter-service notification-service demo-crm-service frontend-angular
+        run: docker compose build eureka-server api-gateway business-knowledge-service decision-engine-service mail-ingestion-service crm-adapter-service notification-service frontend-angular

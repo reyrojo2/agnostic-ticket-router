@@ -10,3 +10,10 @@ spring:
     password: ${RABBITMQ_PASSWORD}
 app:
   cors-origin: ${CORS_ORIGIN:http://localhost:4200}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
