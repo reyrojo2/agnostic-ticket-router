@@ -4,6 +4,7 @@
   <parent><groupId>com.agnosticrouter</groupId><artifactId>agnostic-ticket-router</artifactId><version>0.2.0-SNAPSHOT</version></parent>
   <artifactId>mail-ingestion-service</artifactId>
   <dependencies>
+    <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-netflix-eureka-client</artifactId></dependency>
     <dependency><groupId>com.agnosticrouter</groupId><artifactId>common-contracts</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-amqp</artifactId></dependency>
