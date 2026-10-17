@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../core/auth.service';
@@ -14,8 +14,8 @@ import { AuthService } from '../core/auth.service';
         <p class="muted">Administra conocimiento, integraciones CRM y notificaciones.</p>
         <label>Usuario<input name="username" [(ngModel)]="username" required></label>
         <label>Contraseña<input name="password" [(ngModel)]="password" type="password" required></label>
-        @if (error) { <div class="alert error">{{ error }}</div> }
-        <button class="btn btn-primary full" [disabled]="loading">{{ loading ? 'Ingresando…' : 'Ingresar' }}</button>
+        @if (error()) { <div class="alert error">{{ error() }}</div> }
+        <button class="btn btn-primary full" [disabled]="loading()">{{ loading() ? 'Ingresando…' : 'Ingresar' }}</button>
       </form>
     </div>
   `
@@ -23,17 +23,17 @@ import { AuthService } from '../core/auth.service';
 export class LoginComponent {
   username = '';
   password = '';
-  loading = false;
-  error = '';
+  loading = signal(false);
+  error = signal('');
 
   constructor(private readonly auth: AuthService, private readonly router: Router) {}
 
   submit(): void {
-    this.loading = true;
-    this.error = '';
+    this.loading.set(true);
+    this.error.set('');
     this.auth.login(this.username, this.password).subscribe({
       next: () => this.router.navigateByUrl('/'),
-      error: () => { this.loading = false; this.error = 'Credenciales inválidas o servicio no disponible.'; }
+      error: () => { this.loading.set(false); this.error.set('Credenciales inválidas o servicio no disponible.'); }
     });
   }
 }

@@ -19,7 +19,7 @@ import { AuthService } from './core/auth.service';
             <a routerLink="/knowledge" routerLinkActive="active">Business Knowledge</a>
             <a routerLink="/crm" routerLinkActive="active">Integraciones CRM</a>
             <a routerLink="/notifications" routerLinkActive="active">Notificaciones</a>
-            <a routerLink="/demo" routerLinkActive="active">Demo de correo</a>
+            <a routerLink="/gmail" routerLinkActive="active">Buzón Gmail</a>
           </nav>
           <div class="sidebar-footer">
             <span>{{ auth.username() }}</span>

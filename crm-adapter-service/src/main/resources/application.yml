@@ -13,14 +13,27 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
   jpa:
+    properties:
+      hibernate:
+        default_schema: crm_adapter
     open-in-view: false
     hibernate:
       ddl-auto: validate
   flyway:
     enabled: true
+    create-schemas: true
+    default-schema: crm_adapter
+    schemas: crm_adapter
     table: flyway_history_crm
 
 app:
   security:
     jwt-secret: ${APP_JWT_SECRET}
     cors-origin: ${CORS_ORIGIN:http://localhost:4200}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true

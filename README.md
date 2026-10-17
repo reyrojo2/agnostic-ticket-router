@@ -1,4 +1,178 @@
-# AgnosticTicketRouter — MVP académico v0.2
+# AgnosticTicketRouter — Docker Compose y MVP académico
+
+AgnosticTicketRouter recibe solicitudes no estructuradas, las transforma en eventos, aplica reglas/IA y envía tickets mediante un adaptador CRM configurable. El **arranque recomendado** para desarrollo y demostración es Docker Desktop, con Spring Cloud Gateway y Eureka.
+
+## Arranque en Windows con Docker Desktop
+
+1. En la raíz del repositorio, copia `.env.example` a `.env` si todavía no existe. Completa `DB_PASSWORD`, `RABBITMQ_PASSWORD`, `ADMIN_PASSWORD`, `APP_JWT_SECRET` (mínimo 32 bytes) y los tres secretos `ESPOCRM_*` para inicializar una instalación nueva de EspoCRM. Mantén los secretos fuera de Git. Si ya usas los contenedores, **conserva las contraseñas de las bases existentes**: cambiarlas en `.env` no cambia automáticamente las credenciales persistidas.
+2. Detén los JAR Java y `npm start` locales antes de ejecutar el stack, para liberar los puertos 8081–8085, 8090 y 4200. Mantén Docker Desktop abierto.
+3. Desde PowerShell en la raíz:
+
+```powershell
+.\scripts\start.ps1
+docker compose ps
+```
+
+4. Abre [Angular](http://localhost:4200), [Eureka](http://localhost:8761), [Gateway](http://localhost:8088/actuator/health), [EspoCRM](http://localhost:8080), [RabbitMQ](http://localhost:15672) y [Mailpit](http://localhost:8025).
+5. Para detener **sin borrar datos**, ejecuta `.\scripts\stop.ps1`. No uses `docker compose down -v`.
+
+El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic-ticket-router`) reúne PostgreSQL, RabbitMQ, Mailpit, seis microservicios Java y Angular; el proyecto separado `agnostic-espo` mantiene EspoCRM y su MariaDB, preservando sus volúmenes existentes. El primer build requiere descargar imágenes, dependencias Maven y paquetes npm, y puede tardar varios minutos.
+
+### Puertos y nombres internos
+
+| Componente | Windows | Desde otro contenedor del stack |
+| --- | --- | --- |
+| Angular + proxy Nginx | http://localhost:4200 | frontend-angular:80 |
+| Eureka Server | http://localhost:8761 | eureka-server:8761 |
+| Spring Cloud Gateway | http://localhost:8088 | api-gateway:8088 |
+| PostgreSQL | localhost:5433 | postgres:5432 |
+| RabbitMQ / administración | localhost:5672 / http://localhost:15672 | rabbitmq:5672 |
+| Mailpit SMTP / UI | localhost:1025 / http://localhost:8025 | mailpit:1025 |
+| Business Knowledge | localhost:8082 | business-knowledge-service:8082 |
+| Mail Ingestion | localhost:8081 | mail-ingestion-service:8081 |
+| Decision Engine | localhost:8083 | decision-engine-service:8083 |
+| CRM Adapter | localhost:8084 | crm-adapter-service:8084 |
+| Notification Service | localhost:8085 | notification-service:8085 |
+| Demo CRM | localhost:8090 | demo-crm-service:8090 |
+| EspoCRM | http://localhost:8080 | host.docker.internal:8080 |
+| Laya (opcional) | localhost:8000 | laya:8000 si usa perfil ai |
+
+Angular usa URLs **relativas** y Nginx reenvía las llamadas a **Spring Cloud Gateway**, que descubre los cinco servicios Java mediante Eureka y conecta los auxiliares Python mediante Docker DNS. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
+
+### Laya opcional
+
+Laya no forma parte del arranque básico porque su checkpoint requiere recursos y descarga propia. Si deseas intentar contenerizarlo, configura en `.env` `AI_BASE_URL_DOCKER=http://laya:8000` y ejecuta `.\scripts\start.ps1 -WithAI`. No se ha validado el comportamiento del paquete/checkpoint dentro de este entorno Docker; revisa logs de Laya y el endpoint `/health`. Si Laya ya funciona en Windows, deja `AI_BASE_URL_DOCKER=http://host.docker.internal:8000` y ejecuta sin `-WithAI`.
+
+### Integraciones y datos existentes
+
+Las rutas de integración CRM, canales SMTP y perfiles ya guardados en PostgreSQL **no se reescriben** al cambiar a Docker. Corrige manualmente en Angular las URLs antiguas `http://localhost:8090` (Demo CRM) y `http://localhost:8080` (EspoCRM): usa `http://demo-crm-service:8090` y `http://host.docker.internal:8080`, respectivamente. Para Mailpit en el canal de notificaciones usa host `mailpit`, puerto 1025, sin autenticación ni TLS.
+
+EspoCRM sigue usando su MariaDB propia. Su correo SMTP saliente hacia Mailpit puede continuar usando `host.docker.internal:1025` con la excepción específica `emailServerAllowedAddressList` aplicada previamente al contenedor. No se conecta automáticamente un Gmail de entrada.
+
+### Correcciones de arranque: Flyway y Decision Engine
+
+Los servicios CRM Adapter y Notification fallaban al intentar crear sus tablas Flyway de historial en el esquema compartido `public`. Ahora cada módulo dispone de un esquema propio: `crm_adapter` y `notifications`. Business Knowledge conserva `public`, incluyendo el perfil `TELCO_DEMO`. Decision Engine también corrige el nombre duplicado del bean `knowledgeClient`.
+
+**No se eliminan datos de `public`.** Si existen tablas heredadas `public.crm_*` o `public.notification_*` con configuraciones, **no se copian automáticamente** a los nuevos esquemas. Antes de migrarlas, revisa su contenido y respaldo. Los scripts Flyway crean registros de ejemplo en los nuevos esquemas.
+
+Desde la rama `feat/docker-full-stack`, con Docker Desktop encendido:
+
+```powershell
+git pull
+docker compose up -d --build crm-adapter-service notification-service decision-engine-service
+docker compose ps
+docker compose logs --tail=50 crm-adapter-service notification-service decision-engine-service
+```
+
+Comprobar los datos (ajusta el usuario si no es `router`):
+
+```powershell
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_name IN ('decision_profile','crm_integration','notification_channel') ORDER BY 1,2;"
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT code, active FROM public.decision_profile;"
+```
+
+La configuración de `DEMO_CRM` puede necesitar sustituir su URL antigua `localhost:8090` por `http://demo-crm-service:8090` desde Angular. EspoCRM debe alcanzarse mediante `http://host.docker.internal:8080` desde el contenedor CRM Adapter.
+
+Si Angular no muestra `TELCO_DEMO` aunque exista en SQL, inspecciona la respuesta HTTP de `/api/v1/admin/profiles` en DevTools antes de modificar la base de datos.
+
+## Validación y resolución de problemas
+
+```powershell
+docker compose config --quiet
+docker compose ps
+docker compose logs --tail=100 business-knowledge-service
+docker compose logs -f mail-ingestion-service decision-engine-service crm-adapter-service notification-service
+docker compose -p agnostic-espo -f compose.espocrm.yml ps
+```
+
+Si falla la compilación, ejecuta `docker compose build --no-cache frontend-angular` o `docker compose build business-knowledge-service`, según el servicio afectado. Para las pruebas académicas usa Maven/JDK 21 y ejecuta `mvn clean test` fuera de Docker; el Dockerfile omite las pruebas **solo durante el empaquetado de imágenes**.
+
+### Probar el flujo antes de integrar Gmail
+
+Consulta [Plan de pruebas de correo y end-to-end](docs/EMAIL_TEST_PLAN.md). El formulario Angular **Demo de correo** publica una solicitud REST, no descarga mensajes de una bandeja real. Mailpit simula la **recepción SMTP saliente**. La futura lectura de Gmail/IMAP es una fase de desarrollo independiente, no una funcionalidad completada por esta Dockerización.
+
+---
+
+## EspoCRM principal y perfil visible en Angular
+
+La migración **V3** de CRM Adapter configura `ESPOCRM_LOCAL` como integración principal del perfil `TELCO_DEMO` y desactiva `DEMO_CRM` sin borrar la integración anterior. Crea la operación `POST /api/v1/Case`, con header `X-Api-Key` resuelto mediante `ENV:ESPOCRM_API_KEY`, sin guardar el token en PostgreSQL. Para evitar duplicados, la operación realiza un solo intento. Puedes ajustar el mapeo JSON desde Angular.
+
+**Antes de arrancar**, añade a tu `.env` (no se sube a Git):
+
+```dotenv
+ESPOCRM_API_KEY=LA_CLAVE_DE_TU_USUARIO_API_EN_ESPOCRM
+```
+
+La cuenta API de EspoCRM debe estar activa y tener permiso para crear `Case`. No se puede inferir la clave desde GitHub. Los casos que no puedan clasificarse completamente pueden necesitar SystemOne/Laya o revisión humana antes de enviarse al CRM.
+
+En PowerShell, con la rama del PR:
+
+```powershell
+git pull
+docker compose up -d --build crm-adapter-service frontend-angular
+docker compose logs --tail=80 crm-adapter-service
+```
+
+Para verificar las migraciones y la ruta:
+
+```powershell
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT code,base_url,active FROM crm_adapter.crm_integration;"
+docker compose exec postgres psql -U router -d agnostic_router -c "SELECT profile_code,integration_code,operation_code,active FROM crm_adapter.crm_route;"
+```
+
+**El perfil `TELCO_DEMO` ya existe en PostgreSQL**, no lo vuelvas a crear. Si Angular continúa sin mostrarlo, la pantalla Business Knowledge ahora muestra el código HTTP de la consulta `GET /api/v1/admin/profiles` y permite reintentar. Un `401` indica que debes cerrar sesión y volver a ingresar para obtener un JWT válido; `502/503` apunta al proxy/backend; `500` requiere examinar `docker compose logs business-knowledge-service`. La aparición del nombre `admin` en la barra lateral no garantiza que el token JWT siga vigente, pues Angular guarda la sesión en almacenamiento local.
+
+En DevTools de Chrome (F12 → Network), filtra `profiles`, recarga y revisa la pestaña **Response** y el código HTTP. Nunca compartas el header `Authorization` ni el contenido del token.
+
+## Consola operativa: Gmail, EspoCRM, respuestas y métricas (fase de integración)
+
+El menú **Buzón Gmail** conecta una cuenta de prueba con autorización OAuth 2.0 de solo lectura. El conector publica los mensajes nuevos en `mail-ingestion-service`, que mantiene el flujo RabbitMQ → Decision Engine → CRM Adapter. Ya no es necesario enviar solicitudes manuales desde «Demo de correo».
+
+Antes de iniciar el conector, configura la **Gmail API** y la pantalla de consentimiento OAuth en Google Cloud. Crea un cliente OAuth de tipo **Web application** con URI de redirección exacta `http://localhost:4200/api/v1/gmail/oauth/callback`. Agrega tu cuenta de pruebas como usuario de prueba si Google lo requiere. No publiques el `client_secret`.
+
+Añade a tu archivo privado `.env`:
+
+```dotenv
+GMAIL_CLIENT_ID=TU_CLIENT_ID_DE_GOOGLE
+GMAIL_CLIENT_SECRET=TU_SECRETO_GOOGLE
+GMAIL_ENCRYPTION_KEY=CLAVE_FERNET
+GMAIL_POLL_SECONDS=90
+ESPOCRM_API_KEY=CLAVE_API_DE_USUARIO_ESPOCRM
+```
+
+La clave Fernet se genera localmente con Python y `cryptography`:
+
+```powershell
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**No ejecutes varias instancias del conector sobre el mismo buzón**. En este MVP se utiliza una sola cuenta de prueba y una base SQLite persistente para los tokens y los ID de mensajes procesados. La consulta está deshabilitada por defecto hasta que se habilite desde Angular. Los mensajes se leen pero no se marcan como leídos. La consola Gmail ofrece filtros legibles: «No leídos», «Últimas 24 horas», «Toda la bandeja», y asunto opcional. Si el asunto está vacío, se aceptan todos los asuntos. La consulta de toda la bandeja puede procesar correos antiguos: usa un buzón dedicado. La deduplicación es local al conector y no asegura exactamente una creación de ticket en caso de caída entre publicación y registro.
+
+El dashboard ahora consulta `observability-service`, que consume tres eventos de RabbitMQ: correo recibido, ticket estandarizado y resultado CRM. Guarda **solo identificador, fecha, clasificación resumida y estado**, no almacena cuerpo ni asunto del correo. Muestra los 7 días recientes (zona America/Lima), reglas vs IA, decisiones no aceptadas, revisión, casos creados y errores. Los eventos emitidos antes de desplegar observabilidad **no se reconstruyen retroactivamente**. El estado `pendiente` puede incluir solicitudes fallidas en Decision Engine para las que no se emitió un ticket estándar.
+
+### Respuestas programadas en Angular
+
+El menú **Notificaciones** configura canales SMTP y plantillas por perfil/evento. Para pruebas:
+- Canal SMTP: código `MAILPIT_LOCAL`, host `mailpit`, puerto `1025`, From `no-reply@demo.test`, Auth y STARTTLS **desactivados**.
+- Plantilla `EMAIL_RECEIVED`: acuse de recibo a `{{from}}`.
+- Plantilla `CRM_CREATED`: confirmación con `{{data.externalTicketId}}` al destinatario `{{recipient}}`.
+- Plantilla `REVIEW_REQUIRED`: informar que la solicitud requiere revisión sin afirmar que se creó un Case.
+- Plantilla `CRM_ERROR`: notificar que la integración falló sin afirmar éxito.
+
+Los eventos ya se generan en Java; para enviar SMTP debes **seleccionar el canal SMTP en cada plantilla y guardar**. Por defecto las plantillas históricas envían al canal LOG, por lo que no se envían correos reales ni de prueba automáticamente. Para producción será necesaria una política explícita de remitentes, plantillas, límites y manejo de errores de entrega. Esta fase no implementa un calendario de envíos diferidos.
+
+### Reconstrucción
+
+```powershell
+git pull
+docker compose up -d --build gmail-connector observability-service frontend-angular
+docker compose ps
+docker compose logs --tail=80 gmail-connector observability-service
+```
+
+Verifica en Angular `/gmail` y en el dashboard `/`. La conexión OAuth y la prueba end-to-end con Gmail y EspoCRM **dependen de tus credenciales privadas y requieren validación local**; el CI solo valida compilación, no la conexión real.
+
+## Arquitectura y especificación funcional existente
 
 AgnosticTicketRouter es una plataforma orientada a eventos para convertir solicitudes no estructuradas en **tickets estándar**, tomar decisiones configurables con reglas + IA y enviarlas a APIs externas sin acoplar el motor a un negocio o CRM concreto.
 
@@ -527,3 +701,27 @@ La versión ya implementa configuración genérica para REST/JSON, notificación
 - observabilidad distribuida (trace/correlation ID).
 
 Estas limitaciones no afectan la demostración académica de Spring, REST, persistencia, seguridad, Angular, RabbitMQ y arquitectura de microservicios.
+
+
+## Spring Cloud (Gateway y Eureka)
+
+Se incorporaron Spring Cloud **2024.0.3** con Spring Boot **3.4.5**, el servicio `eureka-server` (8761) y `api-gateway` (8088). Los cinco servicios Java principales se registran en Eureka; Decision Engine consulta Business Knowledge mediante `@LoadBalanced RestClient.Builder` y el nombre lógico `http://business-knowledge-service`.
+
+- `http://localhost:8761`: comprobar las aplicaciones registradas, incluido Gateway.
+- `http://localhost:8088/actuator/health`: salud del Gateway.
+- `http://localhost:4200`: Nginx redirige `/api/**` a Gateway; Angular no requiere nuevas URLs.
+- El Gateway envía solicitudes hacia Java con rutas `lb://` y hacia Python (Gmail y Observability) mediante nombres Docker. Python no se registra automáticamente en Eureka.
+- RabbitMQ mantiene los eventos `email.received`, `ticket.standardized` y `system.event`. No se modifica EspoCRM ni su base MariaDB.
+
+### Comprobación en Windows
+
+```powershell
+git switch main
+git pull --ff-only
+docker compose -p agnostic-espo -f compose.espocrm.yml up -d
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=80 eureka-server api-gateway decision-engine-service
+```
+
+No ejecutes `docker compose down -v`: elimina volúmenes y puede destruir datos de PostgreSQL. Prueba el flujo Gmail → RabbitMQ → EspoCRM otra vez; GitHub Actions comprueba compilación, pero no conoce tus secretos ni puede validar el flujo real de tu cuenta Gmail.

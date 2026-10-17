@@ -1,25 +1,229 @@
+# Reutiliza los volumenes existentes del proyecto agnostic-ticket-router.
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: agnostic_router
-      POSTGRES_USER: ${DB_USER:?DB_USER is required}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-    ports:
-      - "127.0.0.1:5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: ${DB_USER:?required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?required}
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    ports: ["5672:5672", "15672:15672"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?required}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
 
   mailpit:
     image: axllent/mailpit:latest
-    ports: ["1025:1025", "8025:8025"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
+
+  eureka-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: eureka-server}
+    restart: unless-stopped
+    ports: ["127.0.0.1:8761:8761"]
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: api-gateway}
+    restart: unless-stopped
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    ports: ["127.0.0.1:8088:8088"]
+    depends_on:
+      - eureka-server
+      - business-knowledge-service
+      - crm-adapter-service
+      - notification-service
+      - mail-ingestion-service
+
+  business-knowledge-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: business-knowledge-service}
+    restart: unless-stopped
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
+      DB_USER: ${DB_USER:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      ADMIN_USER: ${ADMIN_USER:?required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?required}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      APP_JWT_EXPIRATION_MINUTES: ${APP_JWT_EXPIRATION_MINUTES:-120}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
+    ports: ["127.0.0.1:8082:8082"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  decision-engine-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: decision-engine-service}
+    restart: unless-stopped
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      KNOWLEDGE_BASE_URL: http://business-knowledge-service
+      AI_BASE_URL: ${AI_BASE_URL_DOCKER:-http://host.docker.internal:8000}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-multilingual}
+      AI_LANG: ${AI_LANG:-es}
+    ports: ["127.0.0.1:8083:8083"]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      business-knowledge-service: {condition: service_started}
+
+  mail-ingestion-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: mail-ingestion-service}
+    restart: unless-stopped
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
+    ports: ["127.0.0.1:8081:8081"]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+
+  crm-adapter-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: crm-adapter-service}
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
+      DB_USER: ${DB_USER:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
+    ports: ["127.0.0.1:8084:8084"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: notification-service}
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
+      DB_USER: ${DB_USER:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
+    ports: ["127.0.0.1:8085:8085"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  demo-crm-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: demo-crm-service}
+    restart: unless-stopped
+    ports: ["127.0.0.1:8090:8090"]
+
+  frontend-angular:
+    build:
+      context: ./frontend-angular
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:4200:80"]
+    depends_on:
+      - business-knowledge-service
+      - crm-adapter-service
+      - notification-service
+      - mail-ingestion-service
+      - api-gateway
+
+  gmail-connector:
+    build: {context: ./gmail-connector}
+    restart: unless-stopped
+    environment:
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_ENCRYPTION_KEY: ${GMAIL_ENCRYPTION_KEY:-}
+      GMAIL_REDIRECT_URI: http://localhost:4200/api/v1/gmail/oauth/callback
+      GMAIL_POLL_SECONDS: ${GMAIL_POLL_SECONDS:-90}
+      MAIL_INGESTION_URL: http://mail-ingestion-service:8081/api/v1/intake/emails
+    volumes: [gmail_data:/data]
+    depends_on: [mail-ingestion-service]
+
+  observability-service:
+    build: {context: ./observability-service}
+    restart: unless-stopped
+    environment:
+      DB_URL_PYTHON: postgresql://${DB_USER:?required}:${DB_PASSWORD:?required}@postgres:5432/agnostic_router
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:?required}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      REPORT_TIMEZONE: America/Lima
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  laya:
+    profiles: [ai]
+    build: {context: ./laya, dockerfile: Dockerfile}
+    restart: unless-stopped
+    environment:
+      LAYA_DEVICE: cpu
+      LAYA_PRELOAD: "1"
+      LAYA_MODELS: ${AI_MODEL:-multilingual}
+      HF_HOME: /root/.cache/huggingface
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: [laya-models:/root/.cache/huggingface]
 
 volumes:
   postgres_data:
+  laya-models:
+  gmail_data:

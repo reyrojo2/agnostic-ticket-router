@@ -5,7 +5,7 @@ import { DashboardComponent } from './pages/dashboard.component';
 import { KnowledgeComponent } from './pages/knowledge.component';
 import { CrmComponent } from './pages/crm.component';
 import { NotificationsComponent } from './pages/notifications.component';
-import { IntakeComponent } from './pages/intake.component';
+import { GmailComponent } from './pages/gmail.component';
 
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
@@ -13,6 +13,6 @@ export const routes: Routes = [
   { path: 'knowledge', component: KnowledgeComponent, canActivate: [authGuard] },
   { path: 'crm', component: CrmComponent, canActivate: [authGuard] },
   { path: 'notifications', component: NotificationsComponent, canActivate: [authGuard] },
-  { path: 'demo', component: IntakeComponent, canActivate: [authGuard] },
+  { path: 'gmail', component: GmailComponent, canActivate: [authGuard] },
   { path: '**', redirectTo: '' }
 ];
