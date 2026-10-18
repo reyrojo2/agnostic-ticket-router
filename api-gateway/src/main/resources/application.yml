@@ -23,11 +23,11 @@ spring:
           predicates:
             - Path=/api/v1/intake/**
         - id: gmail
-          uri: http://gmail-connector:8070
+          uri: lb://gmail-connector
           predicates:
             - Path=/api/v1/admin/gmail/**,/api/v1/gmail/oauth/**
         - id: metrics
-          uri: http://observability-service:8071
+          uri: lb://observability-service
           predicates:
             - Path=/api/v1/admin/metrics/**
 eureka:

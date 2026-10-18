@@ -184,9 +184,16 @@ services:
       - api-gateway
 
   gmail-connector:
-    build: {context: ./gmail-connector}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: gmail-connector}
     restart: unless-stopped
     environment:
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
+      DB_USER: ${DB_USER:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
       GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
       GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
@@ -194,14 +201,24 @@ services:
       GMAIL_REDIRECT_URI: http://localhost:4200/api/v1/gmail/oauth/callback
       GMAIL_POLL_SECONDS: ${GMAIL_POLL_SECONDS:-90}
       MAIL_INGESTION_URL: http://mail-ingestion-service:8081/api/v1/intake/emails
-    volumes: [gmail_data:/data]
-    depends_on: [mail-ingestion-service]
+    volumes:
+      - gmail_data:/legacy:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      mail-ingestion-service: {condition: service_started}
+      eureka-server: {condition: service_started}
 
   observability-service:
-    build: {context: ./observability-service}
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      args: {SERVICE: observability-service}
     restart: unless-stopped
     environment:
-      DB_URL_PYTHON: postgresql://${DB_USER:?required}:${DB_PASSWORD:?required}@postgres:5432/agnostic_router
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
+      DB_USER: ${DB_USER:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: ${RABBITMQ_USER:?required}
@@ -210,6 +227,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
+      eureka-server: {condition: service_started}
 
   laya:
     profiles: [ai]
