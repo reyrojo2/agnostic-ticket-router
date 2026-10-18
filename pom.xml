@@ -26,6 +26,8 @@
         <module>decision-engine-service</module>
         <module>crm-adapter-service</module>
         <module>notification-service</module>
+        <module>gmail-connector</module>
+        <module>observability-service</module>
         <module>demo-crm-service</module>
     </modules>
     <dependencyManagement>

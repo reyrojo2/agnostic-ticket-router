@@ -725,3 +725,14 @@ docker compose logs --tail=80 eureka-server api-gateway decision-engine-service
 ```
 
 No ejecutes `docker compose down -v`: elimina volúmenes y puede destruir datos de PostgreSQL. Prueba el flujo Gmail → RabbitMQ → EspoCRM otra vez; GitHub Actions comprueba compilación, pero no conoce tus secretos ni puede validar el flujo real de tu cuenta Gmail.
+
+
+## Unificación backend Java/Spring (rama feature/java-unified-stack)
+
+Los servicios `gmail-connector` y `observability-service` se implementaron nuevamente con **Java 21, Spring Boot, Eureka Client y Spring Cloud Gateway**. La interfaz Angular y las API `/api/v1/admin/gmail/**` y `/api/v1/admin/metrics/**` mantienen sus contratos existentes. Los componentes Python permanecen en el árbol por referencia, pero Docker usa los nuevos módulos Java. DemoCRM no se requiere para el flujo de EspoCRM.
+
+### Primer corte del conector Gmail
+
+La versión Python mantiene sus datos previos en el volumen `gmail_data`, **que no se borra**. El nuevo servicio utiliza PostgreSQL (esquema `gmail_connector`) y cifrado AES-GCM de tokens. Por seguridad **no reutiliza las credenciales Fernet de SQLite**: requiere **volver a conectar OAuth**. La lectura automática comienza deshabilitada. Los ID de mensajes procesados del SQLite anterior todavía necesitan importarse a PostgreSQL si se desea conservar la deduplicación histórica. Hasta realizar esa importación, selecciona «Últimas 24 horas» y haz pruebas solo con mensajes nuevos de una bandeja exclusiva; no uses «Toda la bandeja».
+
+Antes de levantar el stack, haz una copia de seguridad de los datos. Después comprueba `http://localhost:8761`, `http://localhost:4200/gmail`, el dashboard y una solicitud real de prueba. CI demuestra compilación y construcción de imágenes, **no** acceso real a Gmail, validación de OAuth ni creación final de Case en EspoCRM.

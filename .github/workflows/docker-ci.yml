@@ -1,7 +1,7 @@
 name: Docker build and compose validation
 on:
   push:
-    branches: [main, feat/docker-full-stack]
+    branches: [main, feat/docker-full-stack, feature/java-unified-stack]
   pull_request:
 
 jobs:
@@ -32,4 +32,4 @@ jobs:
           docker compose config --quiet
           docker compose -p agnostic-espo -f compose.espocrm.yml config --quiet
       - name: Build all Java and Angular images
-        run: docker compose build eureka-server api-gateway business-knowledge-service decision-engine-service mail-ingestion-service crm-adapter-service notification-service frontend-angular
+        run: docker compose build eureka-server api-gateway business-knowledge-service decision-engine-service mail-ingestion-service crm-adapter-service notification-service gmail-connector observability-service frontend-angular
