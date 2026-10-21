@@ -6,11 +6,10 @@ import com.agnosticrouter.notification.repo.NotificationChannelRepository;
 import com.agnosticrouter.notification.repo.NotificationTemplateRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 
-import java.util.Properties;
+import java.util.List;
+import java.util.Locale;
 
 @Service
 public class NotificationDispatcher {
@@ -19,18 +18,18 @@ public class NotificationDispatcher {
     private final NotificationTemplateRepository templates;
     private final NotificationChannelRepository channels;
     private final TextTemplateRenderer renderer;
-    private final SecretResolver secrets;
+    private final List<NotificationSender> senders;
 
     public NotificationDispatcher(
             NotificationTemplateRepository templates,
             NotificationChannelRepository channels,
             TextTemplateRenderer renderer,
-            SecretResolver secrets
+            List<NotificationSender> senders
     ) {
         this.templates = templates;
         this.channels = channels;
         this.renderer = renderer;
-        this.secrets = secrets;
+        this.senders = List.copyOf(senders);
     }
 
     public void dispatch(String profileCode, String eventType, Object context) {
@@ -58,37 +57,11 @@ public class NotificationDispatcher {
             return;
         }
 
-        String type = channel.getType().toUpperCase();
-        if ("LOG".equals(type)) {
-            log.info("[NOTIFICACION LOG] to={} subject={} body={}", recipient, subject, body);
-            return;
-        }
-        if (!"SMTP".equals(type)) {
-            throw new IllegalArgumentException("Tipo de canal no soportado: " + channel.getType());
-        }
-
-        JavaMailSenderImpl sender = createMailSender(channel);
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(channel.getFromAddress());
-        message.setTo(recipient);
-        message.setSubject(subject);
-        message.setText(body);
-        sender.send(message);
-    }
-
-    private JavaMailSenderImpl createMailSender(NotificationChannel channel) {
-        JavaMailSenderImpl sender = new JavaMailSenderImpl();
-        sender.setHost(channel.getHost());
-        sender.setPort(channel.getPort());
-        sender.setUsername(secrets.resolve(channel.getUsernameRef()));
-        sender.setPassword(secrets.resolve(channel.getPasswordRef()));
-
-        Properties properties = sender.getJavaMailProperties();
-        properties.put("mail.smtp.auth", Boolean.toString(Boolean.TRUE.equals(channel.getSmtpAuth())));
-        properties.put("mail.smtp.starttls.enable", Boolean.toString(Boolean.TRUE.equals(channel.getStartTls())));
-        properties.put("mail.smtp.connectiontimeout", "10000");
-        properties.put("mail.smtp.timeout", "10000");
-        properties.put("mail.smtp.writetimeout", "10000");
-        return sender;
+        String type = channel.getType().toUpperCase(Locale.ROOT);
+        NotificationSender sender = senders.stream()
+                .filter(candidate -> candidate.type().equals(type))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Tipo de canal no soportado: " + channel.getType()));
+        sender.send(channel, recipient, subject, body);
     }
 }

@@ -1,4 +1,6 @@
-package com.agnosticrouter.crm.service;
+package com.agnosticrouter.crm.gateway;
+
+import com.agnosticrouter.crm.service.*;
 
 import com.agnosticrouter.contracts.StandardTicketEvent;
 import com.agnosticrouter.crm.domain.CrmIntegration;
@@ -13,7 +15,7 @@ import java.time.Duration;
 import java.util.*;
 
 @Service
-public class CrmHttpExecutor {
+public class CrmHttpExecutor implements CrmExecutionPort {
     private final HttpClient httpClient;
     private final TemplateRenderer templates;
     private final SecretResolver secrets;

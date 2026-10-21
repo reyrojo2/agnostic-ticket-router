@@ -40,3 +40,27 @@ Un servicio utiliza únicamente los paquetes que necesita. Ni Eureka Server ni A
 - **Verificación:** `mvn test`, `docker compose config`, construcción de imágenes y pruebas de extremo a extremo con Gmail/EspoCRM antes de desplegar.
 
 La normalización inicial elimina implementaciones Python ya inactivas y coloca controladores, listeners y repositorios en capas coherentes. No convierte automáticamente las clases extensas restantes en una arquitectura hexagonal completa: por ejemplo, `GenericDecisionEngine`, `CrmHttpExecutor` y `NotificationDispatcher` aún necesitan particiones en cambios posteriores, con pruebas de contrato para no alterar su comportamiento.
+
+## Segunda fase: casos de uso y adaptadores
+
+La segunda fase separa los controladores administrativos de los casos de uso de Knowledge, CRM y Notificaciones. Los consumidores RabbitMQ no llaman directamente al transporte HTTP en CRM: dependen del puerto `CrmExecutionPort` con implementación `CrmHttpExecutor`.
+
+- **Knowledge:** `KnowledgeAdminService` ejecuta administración; `AuthenticationService` autentica y emite JWT; los controllers adaptan HTTP.
+- **Decision Engine:** `HardRuleDecisionResolver` convierte reglas HARD concluyentes en decisiones, sin invocar IA. `GenericDecisionEngine` mantiene la evaluación de dimensiones SOFT/IA y el orden de dependencias.
+- **CRM Adapter:** `CrmExecutionPort` es el contrato interno que utiliza `CrmAdapterListener`; `CrmHttpExecutor` es la implementación que gestiona llamadas externas.
+- **Notifications:** `NotificationSender` permite estrategias distintas sin condicionales de infraestructura en el caso de uso: `SmtpNotificationSender` y `LogNotificationSender`.
+- **Gmail Connector:** `GmailOAuthService` administra consentimiento/tokens, mientras `GmailService` sincroniza mensajes y registra identificadores.
+- **Observability:** `MetricsService` coordina la lectura y `MetricsReportBuilder` agrega indicadores puros.
+- **Mail Ingestion:** `EmailIntakeService` construye el evento sin conocer RabbitMQ; lo publica mediante `IncomingEmailPublisher` (ya integrado en el PR anterior).
+
+### Dependencias permitidas
+
+```text
+api ───────> service ───────> domain / puertos
+gateway ───> service / puertos <──── config (inyección Spring)
+repo ──────> domain (persistencia propia del contexto)
+```
+
+Los puertos son propios del microservicio, **no** se trasladan a `common-contracts`, que contiene solamente contratos de integración/eventos. No se importa `domain` o `repo` de otro servicio. Eureka y API Gateway siguen siendo infraestructura sin capas artificiales.
+
+Se mantienen los mismos endpoints, tópicos RabbitMQ, tablas, formatos de eventos y nombres Eureka. No se introducen límites artificiales de Laya ni se modifica la semántica HARD/SOFT. La validación de CI (compilación, unit tests, Compose y build de imágenes) **no reemplaza** las pruebas funcionales con Gmail/EspoCRM en el entorno local.
