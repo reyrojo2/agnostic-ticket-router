@@ -3,13 +3,6 @@ server:
 spring:
   application:
     name: decision-engine-service
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5433/agnostic_router}
-    username: ${DB_USER:router}
-    password: ${DB_PASSWORD:}
-  sql:
-    init:
-      mode: always
   rabbitmq:
     listener:
       simple:
@@ -27,9 +20,6 @@ app:
     api-key: ${AI_API_KEY:${LAYA_API_KEY:}}
     model: ${AI_MODEL:${LAYA_MODEL:multilingual}}
     lang: ${AI_LANG:${LAYA_LANG:es}}
-    enabled: ${AI_ENABLED:false}
-    max-calls-per-message: ${AI_MAX_CALLS_PER_MESSAGE:1}
-    max-calls-per-day: ${AI_MAX_CALLS_PER_DAY:10}
 
 eureka:
   client:
