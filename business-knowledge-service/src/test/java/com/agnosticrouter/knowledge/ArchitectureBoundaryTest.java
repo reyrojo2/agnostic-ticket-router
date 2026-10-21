@@ -9,8 +9,8 @@ class ArchitectureBoundaryTest {
     @Test
     void httpControllersMustNotDependDirectlyOnRepositories() {
         var classes = new ClassFileImporter().importPackages("com.agnosticrouter.knowledge");
-        noClasses().that().resideInAPackage("..api..")
-                .should().dependOnClassesThat().resideInAPackage("..repo..")
+        noClasses().that().resideInAPackage("com.agnosticrouter.knowledge.api..")
+                .should().dependOnClassesThat().resideInAPackage("com.agnosticrouter.knowledge.repo..")
                 .check(classes);
     }
 
@@ -18,7 +18,7 @@ class ArchitectureBoundaryTest {
     void applicationServicesMustNotImportTransportControllers() {
         var classes = new ClassFileImporter().importPackages("com.agnosticrouter.knowledge");
         noClasses().that().resideInAPackage("..service..")
-                .should().dependOnClassesThat().resideInAPackage("..api..")
+                .should().dependOnClassesThat().resideInAPackage("com.agnosticrouter.knowledge.api..")
                 .check(classes);
     }
 
