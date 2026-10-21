@@ -4,22 +4,23 @@ import com.agnosticrouter.contracts.DecisionValue;
 import com.agnosticrouter.contracts.IncomingEmailEvent;
 import com.agnosticrouter.contracts.StandardTicketEvent;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.*;
 
 @Service
 public class GenericDecisionEngine {
+    private static final Logger log = LoggerFactory.getLogger(GenericDecisionEngine.class);
     private final KnowledgeClient knowledge;
     private final DecisionAiClient ai;
     private final RuleEvaluator rules;
-    private final AiUsageGuard guard;
 
-    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules, AiUsageGuard guard) {
+    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules) {
         this.knowledge = knowledge;
         this.ai = ai;
         this.rules = rules;
-        this.guard = guard;
     }
 
     public StandardTicketEvent evaluate(IncomingEmailEvent email) {
@@ -30,7 +31,7 @@ public class GenericDecisionEngine {
 
         Map<String, DecisionValue> decisions = new LinkedHashMap<>();
         boolean review = false;
-        int aiCalls = 0;
+        boolean aiUnavailableForThisMessage = false;
         String raw = (email.subject() + "\n" + email.body()).trim();
 
         Map<String, Object> baseState = new LinkedHashMap<>();
@@ -87,16 +88,21 @@ public class GenericDecisionEngine {
 
             List<KnowledgeModels.RuleConfig> softHints = rules.resolveSoft(raw, dimension.rules());
             Map<String, Object> state = buildState(baseState, decisions, softHints);
+            // HARD was already resolved above; only unresolved dimensions may use AI.
+            // SOFT rules are passed as hints, never as authoritative classifications.
             DecisionValue value;
-            if (!guard.enabled() || aiCalls >= guard.maxCallsPerMessage()) {
-                value = unresolved(dimension);
+            if (aiUnavailableForThisMessage) {
+                value = unavailable(dimension);
             } else {
-                aiCalls++;
                 try {
                     value = evaluateWithLaya(dimension, eligible, state, softHints);
                 } catch (RuntimeException ex) {
-                    // API outages, quota exhaustion, and invalid responses must never loop through RabbitMQ.
-                    value = unresolved(dimension);
+                    // Avoid redelivery/credit loops if the provider is unavailable.
+                    // Healthy requests still evaluate every unresolved dimension independently.
+                    aiUnavailableForThisMessage = true;
+                    log.warn("AI unavailable for requestId={} dimension={} ({})",
+                            email.requestId(), dimension.code(), ex.getClass().getSimpleName());
+                    value = unavailable(dimension);
                 }
             }
             decisions.put(dimension.code(), value);
@@ -122,9 +128,9 @@ public class GenericDecisionEngine {
         );
     }
 
-    private DecisionValue unresolved(KnowledgeModels.DimensionConfig d) {
-        return new DecisionValue(d.code(), "REVIEW_REQUIRED", "UNAVAILABLE", 0.0, null,
-            null, null, false, Map.of(), null);
+    private DecisionValue unavailable(KnowledgeModels.DimensionConfig dimension) {
+        return new DecisionValue(dimension.code(), "REVIEW_REQUIRED", "UNAVAILABLE",
+                0.0, null, null, null, false, Map.of(), null);
     }
 
     private Map<String, Object> buildState(
@@ -186,7 +192,7 @@ public class GenericDecisionEngine {
         );
 
         SystemOneModels.Response response = Objects.requireNonNull(
-                guard.decide(ai, state, dimension.code(), question, dimension.autoMinProbability()),
+                ai.decide(state, dimension.code(), question, dimension.autoMinProbability()),
                 "Laya no devolvió respuesta"
         );
 
