@@ -14,9 +14,9 @@ import java.util.Map;
 public class CrmAdapterListener {
     private final RabbitTemplate rabbit;
     private final CrmRouter router;
-    private final CrmHttpExecutor executor;
+    private final CrmExecutionPort executor;
 
-    public CrmAdapterListener(RabbitTemplate rabbit, CrmRouter router, CrmHttpExecutor executor) {
+    public CrmAdapterListener(RabbitTemplate rabbit, CrmRouter router, CrmExecutionPort executor) {
         this.rabbit = rabbit;
         this.router = router;
         this.executor = executor;
