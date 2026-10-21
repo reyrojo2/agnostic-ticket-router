@@ -1,5 +1,10 @@
-package com.agnosticrouter.knowledge.service;
+package com.agnosticrouter.knowledge.application.service;
 
+import com.agnosticrouter.knowledge.domain.model.DecisionRule;
+import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionDimensionRepository;
+import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionOptionRepository;
+import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionProfileRepository;
+import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionRuleRepository;
 import com.agnosticrouter.knowledge.domain.*;
 import com.agnosticrouter.knowledge.repo.*;
 import jakarta.validation.Valid;

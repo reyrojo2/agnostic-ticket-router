@@ -1,5 +1,6 @@
-package com.agnosticrouter.knowledge;
+package com.agnosticrouter.knowledge.infrastructure.security;
 
+import com.agnosticrouter.knowledge.config.JwtProperties;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;

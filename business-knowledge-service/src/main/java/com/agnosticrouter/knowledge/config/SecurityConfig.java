@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge;
+package com.agnosticrouter.knowledge.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.beans.factory.annotation.Value;

@@ -1,6 +1,6 @@
-package com.agnosticrouter.knowledge.service;
+package com.agnosticrouter.knowledge.application.service;
 
-import com.agnosticrouter.knowledge.JwtService;
+import com.agnosticrouter.knowledge.infrastructure.security.JwtService;
 import java.util.Map;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;

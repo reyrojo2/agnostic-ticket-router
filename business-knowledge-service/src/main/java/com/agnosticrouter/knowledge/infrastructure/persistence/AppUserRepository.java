@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge.repo;
+package com.agnosticrouter.knowledge.infrastructure.persistence;
 import com.agnosticrouter.knowledge.domain.AppUser;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;

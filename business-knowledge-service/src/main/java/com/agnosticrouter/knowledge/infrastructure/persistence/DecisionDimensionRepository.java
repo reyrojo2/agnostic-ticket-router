@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge.repo;
+package com.agnosticrouter.knowledge.infrastructure.persistence;
 
 import com.agnosticrouter.knowledge.domain.DecisionDimension;
 import org.springframework.data.jpa.repository.JpaRepository;

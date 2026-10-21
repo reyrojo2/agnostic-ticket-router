@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge.domain;
+package com.agnosticrouter.knowledge.domain.model;
 import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.*;

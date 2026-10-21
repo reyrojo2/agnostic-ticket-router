@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge;
+package com.agnosticrouter.knowledge.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
