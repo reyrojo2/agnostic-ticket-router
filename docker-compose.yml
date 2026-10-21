@@ -97,9 +97,6 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-multilingual}
       AI_LANG: ${AI_LANG:-es}
-      AI_ENABLED: ${AI_ENABLED:-false}
-      AI_MAX_CALLS_PER_MESSAGE: ${AI_MAX_CALLS_PER_MESSAGE:-1}
-      AI_MAX_CALLS_PER_DAY: ${AI_MAX_CALLS_PER_DAY:-10}
     ports: ["127.0.0.1:8083:8083"]
     depends_on:
       rabbitmq: {condition: service_healthy}
