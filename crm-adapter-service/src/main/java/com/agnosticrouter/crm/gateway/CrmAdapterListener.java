@@ -1,8 +1,5 @@
 package com.agnosticrouter.crm.gateway;
 
-import com.agnosticrouter.crm.service.*;
-import com.agnosticrouter.crm.*;
-
 import com.agnosticrouter.contracts.*;
 import com.agnosticrouter.crm.service.*;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
