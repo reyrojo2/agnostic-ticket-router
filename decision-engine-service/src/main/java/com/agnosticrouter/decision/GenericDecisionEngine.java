@@ -16,11 +16,13 @@ public class GenericDecisionEngine {
     private final KnowledgeClient knowledge;
     private final DecisionAiClient ai;
     private final RuleEvaluator rules;
+    private final HardRuleDecisionResolver hardRuleDecisions;
 
-    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules) {
+    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules, HardRuleDecisionResolver hardRuleDecisions) {
         this.knowledge = knowledge;
         this.ai = ai;
         this.rules = rules;
+        this.hardRuleDecisions = hardRuleDecisions;
     }
 
     public StandardTicketEvent evaluate(IncomingEmailEvent email) {
@@ -65,24 +67,9 @@ public class GenericDecisionEngine {
                 continue;
             }
 
-            Optional<KnowledgeModels.RuleConfig> hard = rules.resolveHard(raw, dimension.rules());
-            if (hard.isPresent()) {
-                KnowledgeModels.RuleConfig rule = hard.get();
-                decisions.put(
-                        dimension.code(),
-                        new DecisionValue(
-                                dimension.code(),
-                                rule.targetOptionCode(),
-                                "RULE",
-                                1.0,
-                                null,
-                                0.0,
-                                1.0,
-                                true,
-                                Map.of(rule.targetOptionCode(), 1.0),
-                                rule.code()
-                        )
-                );
+            Optional<DecisionValue> hardDecision = hardRuleDecisions.resolve(raw, dimension);
+            if (hardDecision.isPresent()) {
+                decisions.put(dimension.code(), hardDecision.get());
                 continue;
             }
 
