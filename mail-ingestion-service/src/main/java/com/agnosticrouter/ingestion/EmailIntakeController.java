@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @RestController
@@ -22,6 +23,13 @@ public class EmailIntakeController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String,String> receive(@Valid @RequestBody EmailRequest request){
         String requestId = UUID.randomUUID().toString();
+        // The same Gmail message must keep its identity if the publisher retries before recording it.
+        if(request.metadata()!=null && "gmail".equals(request.metadata().get("source"))
+            && request.metadata().get("gmailMessageId") instanceof String gmailId
+            && !gmailId.isBlank()) {
+            requestId = UUID.nameUUIDFromBytes(
+                (request.profileCode()+"|gmail|"+gmailId).getBytes(StandardCharsets.UTF_8)).toString();
+        }
         IncomingEmailEvent event = new IncomingEmailEvent(
                 requestId, request.profileCode(), request.from(),
                 Optional.ofNullable(request.to()).orElse(List.of()),
