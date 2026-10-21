@@ -1,6 +1,7 @@
 package com.agnosticrouter.knowledge.infrastructure.security;
 
 import com.agnosticrouter.knowledge.config.JwtProperties;
+import com.agnosticrouter.knowledge.application.port.AccessTokenIssuer;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
@@ -10,7 +11,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Service
-public class JwtService {
+public class JwtService implements AccessTokenIssuer {
     private final JwtEncoder encoder;
     private final JwtProperties properties;
 
@@ -40,5 +41,5 @@ public class JwtService {
         return new TokenResult(token, expiresAt);
     }
 
-    public record TokenResult(String token, Instant expiresAt) {}
+
 }

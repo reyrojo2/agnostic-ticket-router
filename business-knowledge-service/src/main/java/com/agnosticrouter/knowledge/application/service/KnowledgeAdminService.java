@@ -1,12 +1,13 @@
 package com.agnosticrouter.knowledge.application.service;
+import com.agnosticrouter.knowledge.domain.model.DecisionDimension;
+import com.agnosticrouter.knowledge.domain.model.DecisionOption;
+import com.agnosticrouter.knowledge.domain.model.DecisionProfile;
 
 import com.agnosticrouter.knowledge.domain.model.DecisionRule;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionDimensionRepository;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionOptionRepository;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionProfileRepository;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionRuleRepository;
-import com.agnosticrouter.knowledge.domain.*;
-import com.agnosticrouter.knowledge.repo.*;
+import com.agnosticrouter.knowledge.application.port.DecisionDimensionStore;
+import com.agnosticrouter.knowledge.application.port.DecisionOptionStore;
+import com.agnosticrouter.knowledge.application.port.DecisionProfileStore;
+import com.agnosticrouter.knowledge.application.port.DecisionRuleStore;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.stereotype.Service;
@@ -15,16 +16,16 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 @Service
 public class KnowledgeAdminService {
-    private final DecisionProfileRepository profiles;
-    private final DecisionDimensionRepository dimensions;
-    private final DecisionOptionRepository options;
-    private final DecisionRuleRepository rules;
+    private final DecisionProfileStore profiles;
+    private final DecisionDimensionStore dimensions;
+    private final DecisionOptionStore options;
+    private final DecisionRuleStore rules;
 
     public KnowledgeAdminService(
-            DecisionProfileRepository profiles,
-            DecisionDimensionRepository dimensions,
-            DecisionOptionRepository options,
-            DecisionRuleRepository rules
+            DecisionProfileStore profiles,
+            DecisionDimensionStore dimensions,
+            DecisionOptionStore options,
+            DecisionRuleStore rules
     ) {
         this.profiles = profiles;
         this.dimensions = dimensions;

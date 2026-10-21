@@ -2,32 +2,15 @@
 
 Todos los microservicios de negocio ejecutan Java 21 y Spring Boot, se empaquetan con Maven y se construyen mediante `Dockerfile.backend`. No se ejecutan `app.py` ni servidores FastAPI. `laya/` es una dependencia externa opcional (servidor de inferencia Python) y **no** es uno de los siete microservicios Java de AgnosticTicketRouter.
 
-## Convención de paquetes
+## Convención de paquetes vigente
 
-```
-com.agnosticrouter.<contexto>/
-  <Servicio>Application.java   # única clase de arranque
-  api/                        # controladores HTTP, request/response y validación
-  service/                    # casos de uso y coordinación de negocio
-  domain/                     # entidades y tipos de dominio, sin JDBC/HTTP/RabbitMQ
-  repo/                       # repositorios/persistencia
-  gateway/                    # entrada/salida por RabbitMQ y servicios externos
-  config/                     # configuración Spring, seguridad, clientes
-```
+La estructura actual, la distribución real de clases y los puertos están documentados en
+[`PACKAGE_LAYOUT.md`](PACKAGE_LAYOUT.md). A diferencia de la versión inicial, los casos de
+uso dependen de interfaces de `application/port`, implementadas por adaptadores en
+`infrastructure/`. Los controladores permanecen en `api/controller`.
 
-Un servicio utiliza únicamente los paquetes que necesita. Ni Eureka Server ni API Gateway requieren capas de dominio ficticias. Los servicios no deben importar clases internas de otros microservicios; comparten solo eventos de `common-contracts` y contratos REST.
-
-## Mapa de responsabilidades
-
-| Módulo | API o consumidor | Caso de uso | Adaptadores y persistencia |
-| --- | --- | --- | --- |
-| Gmail Connector | `api/GmailController` | `service/GmailService` | `gateway/GoogleMailRestClient`, `gateway/RestIntakePublisher`, `repo/GmailRepository` |
-| Mail Ingestion | `api/EmailIntakeController` | `service/EmailIntakeService` | `gateway/RabbitIncomingEmailPublisher` |
-| Business Knowledge | `api/*Controller` | `service/RuntimeConfigService` | `repo/*Repository` |
-| Decision Engine | `gateway/DecisionListener` | `GenericDecisionEngine` (motor de dominio pendiente de separación adicional) | `KnowledgeClient`, `SystemOneDecisionClient` |
-| CRM Adapter | `api/CrmAdminController`, `gateway/CrmAdapterListener` | `service/CrmRouter`, `service/CrmHttpExecutor` | `repo/*Repository` |
-| Notification Service | `api/NotificationAdminController`, `gateway/NotificationListener` | `service/NotificationDispatcher` | `repo/*Repository`, SMTP |
-| Observability | `api/MetricsController`, `gateway/TelemetryConsumer` | `service/MetricsService` | `repo/RequestTraceRepository` |
+`common-contracts` incluye solo eventos y tipos de integración compartidos, nunca entidades
+JPA, repositorios o servicios de dominio de otros microservicios.
 
 ## Reglas SOLID y límites de cambio
 
@@ -39,7 +22,7 @@ Un servicio utiliza únicamente los paquetes que necesita. Ni Eureka Server ni A
 - **Idempotencia:** conservar la detección de mensajes Gmail y `requestId`; no alterar clasificación HARD/SOFT ni cuotas de IA.
 - **Verificación:** `mvn test`, `docker compose config`, construcción de imágenes y pruebas de extremo a extremo con Gmail/EspoCRM antes de desplegar.
 
-La normalización inicial elimina implementaciones Python ya inactivas y coloca controladores, listeners y repositorios en capas coherentes. No convierte automáticamente las clases extensas restantes en una arquitectura hexagonal completa: por ejemplo, `GenericDecisionEngine`, `CrmHttpExecutor` y `NotificationDispatcher` aún necesitan particiones en cambios posteriores, con pruebas de contrato para no alterar su comportamiento.
+El reordenamiento conserva los contratos y traslada las integraciones detrás de puertos. Esta actualización no garantiza transacciones distribuidas ni idempotencia de efectos exactamente una vez; las pruebas de integración y la estrategia outbox siguen siendo necesarias.
 
 ## Segunda fase: casos de uso y adaptadores
 
@@ -56,9 +39,11 @@ La segunda fase separa los controladores administrativos de los casos de uso de 
 ### Dependencias permitidas
 
 ```text
-api ───────> service ───────> domain / puertos
-gateway ───> service / puertos <──── config (inyección Spring)
-repo ──────> domain (persistencia propia del contexto)
+api/controller ──────┐
+infrastructure/messaging ──┼──> application/service ──> application/port + domain
+                          │                               ^
+infrastructure/client ───┘                      infrastructure/* (adapters)
+config ───────────────────────────────────> configuración/inyección Spring
 ```
 
 Los puertos son propios del microservicio, **no** se trasladan a `common-contracts`, que contiene solamente contratos de integración/eventos. No se importa `domain` o `repo` de otro servicio. Eureka y API Gateway siguen siendo infraestructura sin capas artificiales.
@@ -83,7 +68,7 @@ La ejecución CRM sigue el mismo principio: `CrmAdapterListener` delega en `Proc
 
 Gmail separa `GmailOAuthService` (tokens), `GmailService` (planificación/sincronización) y `GmailMessageProcessor` (validación, deduplicación, publicación de una entrada).
 
-Todos los siete módulos de negocio incluyen pruebas ArchUnit para evitar que las clases HTTP accedan a repositorios, que servicios importen controladores, o que el dominio dependa de Spring MVC y AMQP. Son reglas preventivas parciales; no reemplazan pruebas contractuales entre servicios.
+Los siete módulos de negocio incluyen pruebas ArchUnit de separación de capas (controladores ↛ persistencia, aplicación ↛ infraestructura/API/config, dominio ↛ aplicación/infraestructura/API/config) y aislamiento entre microservicios. Las pruebas no reemplazan las pruebas de contrato ni las de integración.
 
 ### Requisitos de despliegue y garantías
 

@@ -1,20 +1,19 @@
 package com.agnosticrouter.knowledge.application.service;
+import com.agnosticrouter.knowledge.domain.model.DecisionProfile;
 
 import com.agnosticrouter.knowledge.application.model.RuntimeModels;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionDimensionRepository;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionOptionRepository;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionProfileRepository;
-import com.agnosticrouter.knowledge.infrastructure.persistence.DecisionRuleRepository;
+import com.agnosticrouter.knowledge.application.port.DecisionDimensionStore;
+import com.agnosticrouter.knowledge.application.port.DecisionOptionStore;
+import com.agnosticrouter.knowledge.application.port.DecisionProfileStore;
+import com.agnosticrouter.knowledge.application.port.DecisionRuleStore;
 import com.agnosticrouter.knowledge.application.model.RuntimeModels.*;
-import com.agnosticrouter.knowledge.domain.*;
-import com.agnosticrouter.knowledge.repo.*;
 import org.springframework.stereotype.Service;
 import java.util.*;
 
 @Service
 public class RuntimeConfigService {
- private final DecisionProfileRepository profiles; private final DecisionDimensionRepository dimensions; private final DecisionOptionRepository options; private final DecisionRuleRepository rules;
- public RuntimeConfigService(DecisionProfileRepository p,DecisionDimensionRepository d,DecisionOptionRepository o,DecisionRuleRepository r){profiles=p;dimensions=d;options=o;rules=r;}
+ private final DecisionProfileStore profiles; private final DecisionDimensionStore dimensions; private final DecisionOptionStore options; private final DecisionRuleStore rules;
+ public RuntimeConfigService(DecisionProfileStore p,DecisionDimensionStore d,DecisionOptionStore o,DecisionRuleStore r){profiles=p;dimensions=d;options=o;rules=r;}
  public ProfileConfig get(String profileCode){
    DecisionProfile p=profiles.findByCodeAndActiveTrue(profileCode).orElseThrow(() -> new NoSuchElementException("Perfil no encontrado: "+profileCode));
    List<DimensionConfig> ds=dimensions.findByProfileIdAndActiveTrueOrderByExecutionOrderAsc(p.getId()).stream().map(d -> new DimensionConfig(

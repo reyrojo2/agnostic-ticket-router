@@ -1,7 +1,7 @@
 package com.agnosticrouter.ingestion.application.service;
 
 import com.agnosticrouter.contracts.IncomingEmailEvent;
-import com.agnosticrouter.ingestion.domain.EmailIntakeCommand;
+import com.agnosticrouter.ingestion.domain.model.EmailIntakeCommand;
 import com.agnosticrouter.ingestion.application.port.IncomingEmailPublisher;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;

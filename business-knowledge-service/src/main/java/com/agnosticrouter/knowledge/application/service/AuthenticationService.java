@@ -1,6 +1,7 @@
 package com.agnosticrouter.knowledge.application.service;
 
-import com.agnosticrouter.knowledge.infrastructure.security.JwtService;
+
+import com.agnosticrouter.knowledge.application.port.AccessTokenIssuer;
 import java.util.Map;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -10,15 +11,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthenticationService {
     private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-    public AuthenticationService(AuthenticationManager authenticationManager, JwtService jwtService) {
+    private final AccessTokenIssuer jwtService;
+    public AuthenticationService(AuthenticationManager authenticationManager, AccessTokenIssuer jwtService) {
         this.authenticationManager=authenticationManager;
         this.jwtService=jwtService;
     }
     public Map<String, Object> login(String username, String password) {
         var authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password));
-        JwtService.TokenResult token = jwtService.issue(authentication);
+        AccessTokenIssuer.TokenResult token = jwtService.issue(authentication);
         return Map.of(
                 "authenticated", true,
                 "username", authentication.getName(),

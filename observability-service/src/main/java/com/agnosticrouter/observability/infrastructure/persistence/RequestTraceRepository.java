@@ -1,6 +1,7 @@
 package com.agnosticrouter.observability.infrastructure.persistence;
 
 import com.agnosticrouter.contracts.*;
+import com.agnosticrouter.observability.application.port.RequestTraceReader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,7 +12,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 
 @Repository
-public class RequestTraceRepository {
+public class RequestTraceRepository implements RequestTraceReader {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
 
