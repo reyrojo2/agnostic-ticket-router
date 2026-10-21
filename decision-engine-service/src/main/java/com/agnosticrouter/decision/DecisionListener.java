@@ -32,7 +32,10 @@ public class DecisionListener {
           ) completed
           """,
            Integer.class,email.requestId(),email.requestId());
-       if(seen!=null && seen>0) return;
+       if(seen!=null && seen>0) {
+          log.info("Skipping already classified requestId={}", email.requestId());
+          return;
+       }
        StandardTicketEvent out=engine.evaluate(email);
        rabbit.convertAndSend(RabbitNames.EXCHANGE,RabbitNames.RK_TICKET_STANDARDIZED,out);
        jdbc.update("INSERT INTO decision_engine.processed_request(request_id) VALUES (?) ON CONFLICT DO NOTHING",email.requestId());
