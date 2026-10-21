@@ -13,7 +13,7 @@ public class RabbitCrmOutcomePublisher implements CrmOutcomePublisher {
     public RabbitCrmOutcomePublisher(RabbitTemplate rabbit) { this.rabbit=rabbit; }
 
     @Override
-    private void publish(StandardTicketEvent ticket, String type, String message, Map<String, Object> data) {
+    public void publish(StandardTicketEvent ticket, String type, String message, Map<String, Object> data) {
         rabbit.convertAndSend(
                 RabbitNames.EXCHANGE,
                 RabbitNames.RK_SYSTEM_EVENT,
