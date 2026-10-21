@@ -1,8 +1,5 @@
 package com.agnosticrouter.notification.gateway;
 
-import com.agnosticrouter.notification.service.*;
-import com.agnosticrouter.notification.*;
-
 import com.agnosticrouter.contracts.IncomingEmailEvent;
 import com.agnosticrouter.contracts.RabbitNames;
 import com.agnosticrouter.contracts.SystemEvent;
