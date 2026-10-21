@@ -13,11 +13,13 @@ public class GenericDecisionEngine {
     private final KnowledgeClient knowledge;
     private final DecisionAiClient ai;
     private final RuleEvaluator rules;
+    private final AiUsageGuard guard;
 
-    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules) {
+    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules, AiUsageGuard guard) {
         this.knowledge = knowledge;
         this.ai = ai;
         this.rules = rules;
+        this.guard = guard;
     }
 
     public StandardTicketEvent evaluate(IncomingEmailEvent email) {
@@ -28,6 +30,7 @@ public class GenericDecisionEngine {
 
         Map<String, DecisionValue> decisions = new LinkedHashMap<>();
         boolean review = false;
+        int aiCalls = 0;
         String raw = (email.subject() + "\n" + email.body()).trim();
 
         Map<String, Object> baseState = new LinkedHashMap<>();
@@ -84,7 +87,18 @@ public class GenericDecisionEngine {
 
             List<KnowledgeModels.RuleConfig> softHints = rules.resolveSoft(raw, dimension.rules());
             Map<String, Object> state = buildState(baseState, decisions, softHints);
-            DecisionValue value = evaluateWithLaya(dimension, eligible, state, softHints);
+            DecisionValue value;
+            if (!guard.enabled() || aiCalls >= guard.maxCallsPerMessage()) {
+                value = unresolved(dimension);
+            } else {
+                aiCalls++;
+                try {
+                    value = evaluateWithLaya(dimension, eligible, state, softHints);
+                } catch (RuntimeException ex) {
+                    // API outages, quota exhaustion, and invalid responses must never loop through RabbitMQ.
+                    value = unresolved(dimension);
+                }
+            }
             decisions.put(dimension.code(), value);
 
             if (dimension.required() && !value.accepted()) {
@@ -106,6 +120,11 @@ public class GenericDecisionEngine {
                 review,
                 Instant.now()
         );
+    }
+
+    private DecisionValue unresolved(KnowledgeModels.DimensionConfig d) {
+        return new DecisionValue(d.code(), "REVIEW_REQUIRED", "UNAVAILABLE", 0.0, null,
+            null, null, false, Map.of(), null);
     }
 
     private Map<String, Object> buildState(
@@ -167,7 +186,7 @@ public class GenericDecisionEngine {
         );
 
         SystemOneModels.Response response = Objects.requireNonNull(
-                ai.decide(state, dimension.code(), question, dimension.autoMinProbability()),
+                guard.decide(ai, state, dimension.code(), question, dimension.autoMinProbability()),
                 "Laya no devolvió respuesta"
         );
 

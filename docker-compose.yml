@@ -89,15 +89,22 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_USER:?required}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
+      DB_URL: jdbc:postgresql://postgres:5432/agnostic_router
+      DB_USER: ${DB_USER:?required}
+      DB_PASSWORD: ${DB_PASSWORD:?required}
       KNOWLEDGE_BASE_URL: http://business-knowledge-service
       AI_BASE_URL: ${AI_BASE_URL_DOCKER:-http://host.docker.internal:8000}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-multilingual}
       AI_LANG: ${AI_LANG:-es}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_MAX_CALLS_PER_MESSAGE: ${AI_MAX_CALLS_PER_MESSAGE:-1}
+      AI_MAX_CALLS_PER_DAY: ${AI_MAX_CALLS_PER_DAY:-10}
     ports: ["127.0.0.1:8083:8083"]
     depends_on:
       rabbitmq: {condition: service_healthy}
       business-knowledge-service: {condition: service_started}
+      postgres: {condition: service_healthy}
 
   mail-ingestion-service:
     build:
