@@ -51,7 +51,7 @@ public class GmailOAuthService {
    return "/gmail?connected=1";
   }catch(RuntimeException ex){return "/gmail?error=oauth";}
  }
- private String access(GmailRepository.Account a){
+ public String access(GmailRepository.Account a){
   long now=Instant.now().getEpochSecond();
   if(a.accessToken()!=null&&a.expiresAt()>now+60)return tokens.decrypt(a.accessToken());
   String refresh=tokens.decrypt(a.refreshToken());
