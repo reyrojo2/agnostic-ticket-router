@@ -1,6 +1,6 @@
-package com.agnosticrouter.knowledge.api;
+package com.agnosticrouter.knowledge.api.controller;
 
-import com.agnosticrouter.knowledge.service.AuthenticationService;
+import com.agnosticrouter.knowledge.application.service.AuthenticationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.Map;

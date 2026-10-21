@@ -1,5 +1,5 @@
-package com.agnosticrouter.knowledge;
-import com.agnosticrouter.knowledge.repo.AppUserRepository;
+package com.agnosticrouter.knowledge.infrastructure.security;
+import com.agnosticrouter.knowledge.infrastructure.persistence.AppUserRepository;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.stereotype.Service;
 @Service

@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge.domain;
+package com.agnosticrouter.knowledge.domain.model;
 import jakarta.persistence.*;
 import lombok.*;
 @Entity @Table(name="app_user") @Getter @Setter @NoArgsConstructor

@@ -1,7 +1,12 @@
-package com.agnosticrouter.knowledge.api;
+package com.agnosticrouter.knowledge.api.controller;
 
-import com.agnosticrouter.knowledge.service.KnowledgeAdminService;
-import com.agnosticrouter.knowledge.service.KnowledgeAdminService.*;
+
+import com.agnosticrouter.knowledge.domain.model.DecisionDimension;
+import com.agnosticrouter.knowledge.domain.model.DecisionOption;
+import com.agnosticrouter.knowledge.domain.model.DecisionProfile;
+import com.agnosticrouter.knowledge.domain.model.DecisionRule;
+import com.agnosticrouter.knowledge.application.service.KnowledgeAdminService;
+import com.agnosticrouter.knowledge.application.service.KnowledgeAdminService.*;
 import com.agnosticrouter.knowledge.domain.*;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;

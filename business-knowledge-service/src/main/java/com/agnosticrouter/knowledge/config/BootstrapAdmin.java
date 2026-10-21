@@ -1,6 +1,6 @@
-package com.agnosticrouter.knowledge;
-import com.agnosticrouter.knowledge.domain.AppUser;
-import com.agnosticrouter.knowledge.repo.AppUserRepository;
+package com.agnosticrouter.knowledge.config;
+import com.agnosticrouter.knowledge.domain.model.AppUser;
+import com.agnosticrouter.knowledge.infrastructure.persistence.AppUserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
