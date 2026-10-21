@@ -35,7 +35,11 @@ class GenericDecisionEngineRoutingTest {
         when(knowledge.getProfile("TELCO_DEMO")).thenReturn(
             new KnowledgeModels.ProfileConfig("TELCO_DEMO","Telco",1,List.of(dims)));
         RuleEvaluator ruleEvaluator = new RuleEvaluator();
-        return new GenericDecisionEngine(knowledge,ai,ruleEvaluator,new HardRuleDecisionResolver(ruleEvaluator));
+        return new GenericDecisionEngine(knowledge, ruleEvaluator,
+                new HardRuleDecisionResolver(ruleEvaluator),
+                new AiDimensionEvaluator(ai),
+                new DecisionContextBuilder(),
+                new DimensionDependencyPolicy());
     }
 
     @Test void allFourHardDimensionsMakeZeroAiCalls() {
