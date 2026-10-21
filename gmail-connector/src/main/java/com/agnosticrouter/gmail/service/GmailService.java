@@ -15,15 +15,14 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class GmailService {
  private final GmailRepository repo;
  private final GoogleMailClient google;
- private final IntakePublisher publisher;
- private final MailParser parser;
  private final GmailSettings cfg;
+ private final GmailMessageProcessor messageProcessor;
  private final GmailOAuthService oauth;
  private final AtomicBoolean busy=new AtomicBoolean();
 
  public GmailService(GmailRepository repo,GoogleMailClient google,IntakePublisher publisher,
-       MailParser parser,GmailSettings cfg,GmailOAuthService oauth){
-  this.repo=repo;this.google=google;this.publisher=publisher;this.parser=parser;this.cfg=cfg;this.oauth=oauth;
+       GmailSettings cfg,GmailOAuthService oauth,GmailMessageProcessor messageProcessor){
+  this.repo=repo;this.google=google;this.cfg=cfg;this.oauth=oauth;this.messageProcessor=messageProcessor;
  }
  public Map<String,Object> status(){
   GmailRepository.Account a=repo.account();
@@ -62,14 +61,7 @@ public class GmailService {
     List<Map<String,Object>> messages=(List<Map<String,Object>>)listing.getOrDefault("messages",List.of());
     for(int i=messages.size()-1;i>=0;i--){
      String id=String.valueOf(messages.get(i).get("id"));
-     if(repo.processed(a.email(),id))continue;
-     String raw=(String)google.message(token,id).get("raw");
-     if(raw==null)continue;
-     MailParser.Mail msg=parser.parse(raw);
-     if(msg.from()==null||!msg.from().matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")
-           ||msg.subject().isBlank()||msg.body().isBlank())continue;
-     String requestId=publisher.publish(a.profileCode(),msg.from(),msg.subject(),msg.body(),id);
-     repo.markProcessed(a.email(),id,requestId);processed++;
+     if(messageProcessor.process(a,token,id))processed++;
     }
     page=(String)listing.get("nextPageToken");if(page==null||page.isBlank())break;
    }

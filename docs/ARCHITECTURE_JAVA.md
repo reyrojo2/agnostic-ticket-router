@@ -64,3 +64,29 @@ repo ──────> domain (persistencia propia del contexto)
 Los puertos son propios del microservicio, **no** se trasladan a `common-contracts`, que contiene solamente contratos de integración/eventos. No se importa `domain` o `repo` de otro servicio. Eureka y API Gateway siguen siendo infraestructura sin capas artificiales.
 
 Se mantienen los mismos endpoints, tópicos RabbitMQ, tablas, formatos de eventos y nombres Eureka. No se introducen límites artificiales de Laya ni se modifica la semántica HARD/SOFT. La validación de CI (compilación, unit tests, Compose y build de imágenes) **no reemplaza** las pruebas funcionales con Gmail/EspoCRM en el entorno local.
+
+## Tercera fase: núcleo, puertos y controles automatizados
+
+El código del motor de decisiones aplica la siguiente separación:
+
+- `GenericDecisionEngine.evaluate()`: coordina el orden de las dimensiones y conserva HARD > SOFT/IA.
+- `HardRuleDecisionResolver.resolve()`: política determinística; una HARD concluyente evita cualquier consulta a IA en esa dimensión.
+- `DimensionDependencyPolicy.satisfied()`: restricciones entre dimensiones y opciones.
+- `DecisionContextBuilder.buildState()`: contexto y pistas SOFT para la IA.
+- `AiDimensionEvaluator.evaluate()`: construcción e interpretación de solicitudes `SystemOne`; usa `DecisionAiClient` sustituible.
+- `ProcessIncomingEmail.process()`: caso de uso y comprobación de idempotencia propia.
+- `ProcessedDecisionRepository`: solo consulta `decision_engine.processed_request`, nunca esquemas internos de Observability.
+- `ClassifiedTicketPublisher`: puerto de salida implementado por `RabbitClassifiedTicketPublisher`.
+- `DecisionListener.handle()`: adaptador de entrada AMQP y cuarentena de fallos.
+
+La ejecución CRM sigue el mismo principio: `CrmAdapterListener` delega en `ProcessClassifiedTicket`, que depende de los puertos `CrmExecutionPort` y `CrmOutcomePublisher`. `CrmHttpExecutor`, `CrmAuthenticationConfigurer` y `RabbitCrmOutcomePublisher` son adaptadores técnicos propios del servicio.
+
+Gmail separa `GmailOAuthService` (tokens), `GmailService` (planificación/sincronización) y `GmailMessageProcessor` (validación, deduplicación, publicación de una entrada).
+
+Todos los siete módulos de negocio incluyen pruebas ArchUnit para evitar que las clases HTTP accedan a repositorios, que servicios importen controladores, o que el dominio dependa de Spring MVC y AMQP. Son reglas preventivas parciales; no reemplazan pruebas contractuales entre servicios.
+
+### Requisitos de despliegue y garantías
+
+**Antes de arrancar el nuevo Decision Engine**, aplicar la migración de IDs históricos descrita en `docs/DECISION_IDEMPOTENCY_MIGRATION.md`. La aplicación no ejecuta SQL sobre Observability durante operación normal.
+
+Este cambio mejora SRP y DIP, pero **no garantiza entrega exactamente una vez**: publicación AMQP y registro de procesado no comparten transacción. Para ese requisito aún se necesitan outbox transaccional, confirmaciones de RabbitMQ y deduplicación del lado receptor (especialmente CRM y notificaciones). La ejecución real con PostgreSQL, RabbitMQ, Gmail y EspoCRM debe validarse después de desplegar; las pruebas Maven/CI no sustituyen esa validación.

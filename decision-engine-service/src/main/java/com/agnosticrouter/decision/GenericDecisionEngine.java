@@ -14,15 +14,21 @@ import java.util.*;
 public class GenericDecisionEngine {
     private static final Logger log = LoggerFactory.getLogger(GenericDecisionEngine.class);
     private final KnowledgeClient knowledge;
-    private final DecisionAiClient ai;
     private final RuleEvaluator rules;
+    private final AiDimensionEvaluator aiDimensions;
+    private final DecisionContextBuilder contexts;
+    private final DimensionDependencyPolicy dependencies;
     private final HardRuleDecisionResolver hardRuleDecisions;
 
-    public GenericDecisionEngine(KnowledgeClient knowledge, DecisionAiClient ai, RuleEvaluator rules, HardRuleDecisionResolver hardRuleDecisions) {
+    public GenericDecisionEngine(KnowledgeClient knowledge, RuleEvaluator rules, HardRuleDecisionResolver hardRuleDecisions,
+                                 AiDimensionEvaluator aiDimensions, DecisionContextBuilder contexts,
+                                 DimensionDependencyPolicy dependencies) {
         this.knowledge = knowledge;
-        this.ai = ai;
         this.rules = rules;
         this.hardRuleDecisions = hardRuleDecisions;
+        this.aiDimensions = aiDimensions;
+        this.contexts = contexts;
+        this.dependencies = dependencies;
     }
 
     public StandardTicketEvent evaluate(IncomingEmailEvent email) {
@@ -47,7 +53,7 @@ public class GenericDecisionEngine {
         }
 
         for (KnowledgeModels.DimensionConfig dimension : profile.dimensions()) {
-            if (!dependencySatisfied(
+            if (!dependencies.satisfied(
                     dimension.dependsOnDimensionCode(),
                     dimension.dependsOnOptionCode(),
                     decisions
@@ -56,7 +62,7 @@ public class GenericDecisionEngine {
             }
 
             List<KnowledgeModels.OptionConfig> eligible = dimension.options().stream()
-                    .filter(option -> dependencySatisfied(
+                    .filter(option -> dependencies.satisfied(
                             option.dependsOnDimensionCode(),
                             option.dependsOnOptionCode(),
                             decisions
@@ -74,7 +80,7 @@ public class GenericDecisionEngine {
             }
 
             List<KnowledgeModels.RuleConfig> softHints = rules.resolveSoft(raw, dimension.rules());
-            Map<String, Object> state = buildState(baseState, decisions, softHints);
+            Map<String, Object> state = contexts.buildState(baseState, decisions, softHints);
             // HARD was already resolved above; only unresolved dimensions may use AI.
             // SOFT rules are passed as hints, never as authoritative classifications.
             DecisionValue value;
@@ -82,7 +88,7 @@ public class GenericDecisionEngine {
                 value = unavailable(dimension);
             } else {
                 try {
-                    value = evaluateWithLaya(dimension, eligible, state, softHints);
+                    value = aiDimensions.evaluate(dimension, eligible, state, softHints);
                 } catch (RuntimeException ex) {
                     // Avoid redelivery/credit loops if the provider is unavailable.
                     // Healthy requests still evaluate every unresolved dimension independently.
@@ -120,175 +126,4 @@ public class GenericDecisionEngine {
                 0.0, null, null, null, false, Map.of(), null);
     }
 
-    private Map<String, Object> buildState(
-            Map<String, Object> baseState,
-            Map<String, DecisionValue> decisions,
-            List<KnowledgeModels.RuleConfig> softHints
-    ) {
-        Map<String, Object> state = new LinkedHashMap<>(baseState);
-
-        if (!decisions.isEmpty()) {
-            Map<String, String> resolved = new LinkedHashMap<>();
-            decisions.forEach((code, value) -> resolved.put(code, value.value()));
-            state.put("resolved_decisions", resolved);
-        }
-
-        if (!softHints.isEmpty()) {
-            state.put(
-                    "business_hints",
-                    softHints.stream()
-                            .map(rule -> Map.of(
-                                    "rule", rule.code(),
-                                    "suggested_option", rule.targetOptionCode()
-                            ))
-                            .toList()
-            );
-        }
-
-        return state;
-    }
-
-    private DecisionValue evaluateWithLaya(
-            KnowledgeModels.DimensionConfig dimension,
-            List<KnowledgeModels.OptionConfig> options,
-            Map<String, Object> state,
-            List<KnowledgeModels.RuleConfig> softHints
-    ) {
-        String type = dimension.primitiveType().toUpperCase(Locale.ROOT);
-        Object criteria;
-
-        if ("SCORE".equals(type)) {
-            criteria = options.stream()
-                    .sorted(Comparator.comparingInt(KnowledgeModels.OptionConfig::priority))
-                    .map(this::criteriaText)
-                    .toList();
-        } else if ("NOUL".equals(type)) {
-            criteria = null;
-        } else {
-            Map<String, String> map = new LinkedHashMap<>();
-            options.stream()
-                    .sorted(Comparator.comparingInt(KnowledgeModels.OptionConfig::priority))
-                    .forEach(option -> map.put(option.code(), criteriaText(option)));
-            criteria = map;
-        }
-
-        SystemOneModels.Question question = new SystemOneModels.Question(
-                type.toLowerCase(Locale.ROOT),
-                dimension.instructions(),
-                criteria
-        );
-
-        SystemOneModels.Response response = Objects.requireNonNull(
-                ai.decide(state, dimension.code(), question, dimension.autoMinProbability()),
-                "Laya no devolvió respuesta"
-        );
-
-        SystemOneModels.Answer answer = Objects.requireNonNull(
-                response.answers().get(dimension.code()),
-                "Laya no respondió la dimensión " + dimension.code()
-        );
-
-        boolean truncated = response.usage() != null && Boolean.TRUE.equals(response.usage().truncated());
-        String hintCodes = softHints.isEmpty()
-                ? null
-                : String.join(",", softHints.stream().map(KnowledgeModels.RuleConfig::code).toList());
-
-        if ("NOUL".equals(type)) {
-            double yes = Optional.ofNullable(answer.noul()).orElse(0.0);
-            String value = yes >= .5 ? "YES" : "NO";
-            double probability = Math.max(yes, 1 - yes);
-            boolean accepted = probability >= dimension.autoMinProbability() && !truncated;
-            return new DecisionValue(
-                    dimension.code(),
-                    value,
-                    "AI",
-                    probability,
-                    null,
-                    null,
-                    null,
-                    accepted,
-                    Map.of("YES", yes, "NO", 1 - yes),
-                    hintCodes
-            );
-        }
-
-        if ("SCORE".equals(type)) {
-            double score = Optional.ofNullable(answer.score()).orElse(0.0);
-            double probability = Optional.ofNullable(answer.answerConfidence()).orElse(0.0);
-            boolean accepted = probability >= dimension.autoMinProbability() && !truncated;
-            return new DecisionValue(
-                    dimension.code(),
-                    Double.toString(score),
-                    "AI",
-                    probability,
-                    null,
-                    null,
-                    null,
-                    accepted,
-                    Optional.ofNullable(answer.probabilities()).orElse(Map.of()),
-                    hintCodes
-            );
-        }
-
-        Map<String, Double> probabilities = Optional.ofNullable(answer.probabilities()).orElse(Map.of());
-        List<Map.Entry<String, Double>> ranking = probabilities.entrySet().stream()
-                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .toList();
-
-        String first = answer.choice() != null
-                ? answer.choice()
-                : (ranking.isEmpty() ? null : ranking.get(0).getKey());
-
-        double firstProbability = ranking.stream()
-                .filter(entry -> Objects.equals(entry.getKey(), first))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse(Optional.ofNullable(answer.answerConfidence()).orElse(0.0));
-
-        String second = ranking.size() > 1 ? ranking.get(1).getKey() : null;
-        double secondProbability = ranking.size() > 1 ? ranking.get(1).getValue() : 0.0;
-        double margin = firstProbability - secondProbability;
-
-        boolean accepted = first != null
-                && firstProbability >= dimension.autoMinProbability()
-                && margin >= dimension.minMargin()
-                && !truncated
-                && !Boolean.TRUE.equals(answer.lowConfidence());
-
-        return new DecisionValue(
-                dimension.code(),
-                first,
-                "AI",
-                firstProbability,
-                second,
-                secondProbability,
-                margin,
-                accepted,
-                probabilities,
-                hintCodes
-        );
-    }
-
-    private String criteriaText(KnowledgeModels.OptionConfig option) {
-        StringBuilder text = new StringBuilder(option.description());
-        if (option.includeContext() != null && !option.includeContext().isBlank()) {
-            text.append(" Incluye: ").append(option.includeContext());
-        }
-        if (option.excludeContext() != null && !option.excludeContext().isBlank()) {
-            text.append(" Excluir: ").append(option.excludeContext());
-        }
-        return text.toString();
-    }
-
-    private boolean dependencySatisfied(
-            String dimension,
-            String option,
-            Map<String, DecisionValue> decisions
-    ) {
-        if (dimension == null || dimension.isBlank()) {
-            return true;
-        }
-        DecisionValue parent = decisions.get(dimension);
-        return parent != null && (option == null || option.isBlank() || option.equals(parent.value()));
-    }
 }
