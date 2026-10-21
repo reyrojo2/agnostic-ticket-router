@@ -1,6 +1,6 @@
 package com.agnosticrouter.knowledge.service;
 
-import com.agnosticrouter.knowledge.api.RuntimeModels.*;
+import com.agnosticrouter.knowledge.service.RuntimeModels.*;
 import com.agnosticrouter.knowledge.domain.*;
 import com.agnosticrouter.knowledge.repo.*;
 import org.springframework.stereotype.Service;

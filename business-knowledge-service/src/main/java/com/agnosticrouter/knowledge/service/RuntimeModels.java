@@ -1,4 +1,4 @@
-package com.agnosticrouter.knowledge.api;
+package com.agnosticrouter.knowledge.service;
 import java.util.List;
 public final class RuntimeModels {
  private RuntimeModels(){}
