@@ -1,5 +1,7 @@
-package com.agnosticrouter.ingestion.gateway;
+package com.agnosticrouter.ingestion.infrastructure.messaging;
 
+
+import com.agnosticrouter.ingestion.application.port.IncomingEmailPublisher;
 import com.agnosticrouter.contracts.IncomingEmailEvent;
 import com.agnosticrouter.contracts.RabbitNames;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;

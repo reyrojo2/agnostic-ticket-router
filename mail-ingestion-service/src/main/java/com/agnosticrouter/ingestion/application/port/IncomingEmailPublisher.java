@@ -1,4 +1,4 @@
-package com.agnosticrouter.ingestion.gateway;
+package com.agnosticrouter.ingestion.application.port;
 
 import com.agnosticrouter.contracts.IncomingEmailEvent;
 

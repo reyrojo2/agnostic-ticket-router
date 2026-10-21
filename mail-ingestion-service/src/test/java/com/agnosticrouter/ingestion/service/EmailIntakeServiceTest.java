@@ -1,8 +1,10 @@
 package com.agnosticrouter.ingestion.service;
 
+
+import com.agnosticrouter.ingestion.application.service.EmailIntakeService;
 import com.agnosticrouter.contracts.IncomingEmailEvent;
 import com.agnosticrouter.ingestion.domain.EmailIntakeCommand;
-import com.agnosticrouter.ingestion.gateway.IncomingEmailPublisher;
+import com.agnosticrouter.ingestion.application.port.IncomingEmailPublisher;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

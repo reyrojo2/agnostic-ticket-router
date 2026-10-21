@@ -1,4 +1,4 @@
-package com.agnosticrouter.ingestion;
+package com.agnosticrouter.ingestion.config;
 
 import com.agnosticrouter.contracts.RabbitNames;
 import org.springframework.amqp.core.*;

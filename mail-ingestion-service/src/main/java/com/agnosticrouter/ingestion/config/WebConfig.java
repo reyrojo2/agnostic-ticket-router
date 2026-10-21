@@ -1,4 +1,4 @@
-package com.agnosticrouter.ingestion;
+package com.agnosticrouter.ingestion.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;

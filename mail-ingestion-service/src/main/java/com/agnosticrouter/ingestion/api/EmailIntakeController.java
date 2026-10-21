@@ -1,7 +1,7 @@
 package com.agnosticrouter.ingestion.api;
 
 import com.agnosticrouter.ingestion.domain.EmailIntakeCommand;
-import com.agnosticrouter.ingestion.service.EmailIntakeService;
+import com.agnosticrouter.ingestion.application.service.EmailIntakeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
