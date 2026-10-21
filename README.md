@@ -16,7 +16,7 @@ docker compose ps
 4. Abre [Angular](http://localhost:4200), [Eureka](http://localhost:8761), [Gateway](http://localhost:8088/actuator/health), [EspoCRM](http://localhost:8080), [RabbitMQ](http://localhost:15672) y [Mailpit](http://localhost:8025).
 5. Para detener **sin borrar datos**, ejecuta `.\scripts\stop.ps1`. No uses `docker compose down -v`.
 
-El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic-ticket-router`) reúne PostgreSQL, RabbitMQ, Mailpit, seis microservicios Java y Angular; el proyecto separado `agnostic-espo` mantiene EspoCRM y su MariaDB, preservando sus volúmenes existentes. El primer build requiere descargar imágenes, dependencias Maven y paquetes npm, y puede tardar varios minutos.
+El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic-ticket-router`) reúne PostgreSQL, RabbitMQ, Mailpit, siete microservicios Java y Angular; el proyecto separado `agnostic-espo` mantiene EspoCRM y su MariaDB, preservando sus volúmenes existentes. El primer build requiere descargar imágenes, dependencias Maven y paquetes npm, y puede tardar varios minutos.
 
 ### Puertos y nombres internos
 
@@ -37,7 +37,7 @@ El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic
 | EspoCRM | http://localhost:8080 | host.docker.internal:8080 |
 | Laya (opcional) | localhost:8000 | laya:8000 si usa perfil ai |
 
-Angular usa URLs **relativas** y Nginx reenvía las llamadas a **Spring Cloud Gateway**, que descubre los cinco servicios Java mediante Eureka y conecta los auxiliares Python mediante Docker DNS. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
+Angular usa URLs **relativas** y Nginx reenvía las llamadas a **Spring Cloud Gateway**, que descubre los microservicios Java mediante Eureka. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
 
 ### Laya opcional
 
@@ -710,7 +710,7 @@ Se incorporaron Spring Cloud **2024.0.3** con Spring Boot **3.4.5**, el servicio
 - `http://localhost:8761`: comprobar las aplicaciones registradas, incluido Gateway.
 - `http://localhost:8088/actuator/health`: salud del Gateway.
 - `http://localhost:4200`: Nginx redirige `/api/**` a Gateway; Angular no requiere nuevas URLs.
-- El Gateway envía solicitudes hacia Java con rutas `lb://` y hacia Python (Gmail y Observability) mediante nombres Docker. Python no se registra automáticamente en Eureka.
+- El Gateway envía solicitudes a los servicios Java registrados en Eureka mediante rutas `lb://`. Gmail Connector y Observability también están implementados en Java y registrados en Eureka.
 - RabbitMQ mantiene los eventos `email.received`, `ticket.standardized` y `system.event`. No se modifica EspoCRM ni su base MariaDB.
 
 ### Comprobación en Windows
@@ -729,7 +729,7 @@ No ejecutes `docker compose down -v`: elimina volúmenes y puede destruir datos 
 
 ## Unificación backend Java/Spring (rama feature/java-unified-stack)
 
-Los servicios `gmail-connector` y `observability-service` se implementaron nuevamente con **Java 21, Spring Boot, Eureka Client y Spring Cloud Gateway**. La interfaz Angular y las API `/api/v1/admin/gmail/**` y `/api/v1/admin/metrics/**` mantienen sus contratos existentes. Los componentes Python permanecen en el árbol por referencia, pero Docker usa los nuevos módulos Java. DemoCRM no se requiere para el flujo de EspoCRM.
+Los servicios `gmail-connector` y `observability-service` se implementaron nuevamente con **Java 21, Spring Boot, Eureka Client y Spring Cloud Gateway**. La interfaz Angular y las API `/api/v1/admin/gmail/**` y `/api/v1/admin/metrics/**` mantienen sus contratos existentes. Los archivos Python heredados fueron eliminados: Docker usa únicamente las implementaciones Java. DemoCRM no se requiere para el flujo de EspoCRM.
 
 ### Primer corte del conector Gmail
 
