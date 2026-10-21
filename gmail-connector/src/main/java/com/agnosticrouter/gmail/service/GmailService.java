@@ -79,3 +79,4 @@ public class GmailService {
    return Map.of("status","error","processed",processed,"detail",ex.getClass().getSimpleName());
   }finally{busy.set(false);}
  }
+}
