@@ -1,4 +1,4 @@
-package com.agnosticrouter.notification;
+package com.agnosticrouter.notification.gateway;
 
 import com.agnosticrouter.contracts.IncomingEmailEvent;
 import com.agnosticrouter.contracts.RabbitNames;

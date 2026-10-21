@@ -1,6 +1,6 @@
 package com.agnosticrouter.observability.service;
 
-import com.agnosticrouter.observability.domain.RequestTraceRepository;
+import com.agnosticrouter.observability.repo.RequestTraceRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.time.*;

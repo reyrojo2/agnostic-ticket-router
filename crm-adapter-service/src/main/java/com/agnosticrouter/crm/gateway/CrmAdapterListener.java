@@ -1,4 +1,4 @@
-package com.agnosticrouter.crm;
+package com.agnosticrouter.crm.gateway;
 
 import com.agnosticrouter.contracts.*;
 import com.agnosticrouter.crm.service.*;

@@ -1,4 +1,6 @@
-package com.agnosticrouter.decision;
+package com.agnosticrouter.decision.gateway;
+
+import com.agnosticrouter.decision.*;
 
 import com.agnosticrouter.contracts.*;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;

@@ -1,4 +1,4 @@
-package com.agnosticrouter.observability.domain;
+package com.agnosticrouter.observability.repo;
 
 import com.agnosticrouter.contracts.*;
 import com.fasterxml.jackson.core.JsonProcessingException;

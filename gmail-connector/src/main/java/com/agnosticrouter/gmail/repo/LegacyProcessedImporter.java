@@ -1,4 +1,4 @@
-package com.agnosticrouter.gmail.domain;
+package com.agnosticrouter.gmail.repo;
 
 import java.nio.file.*;
 import java.sql.*;

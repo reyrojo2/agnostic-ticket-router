@@ -1,7 +1,7 @@
 package com.agnosticrouter.gmail.service;
 
 import com.agnosticrouter.gmail.config.GmailSettings;
-import com.agnosticrouter.gmail.domain.GmailRepository;
+import com.agnosticrouter.gmail.repo.GmailRepository;
 import com.agnosticrouter.gmail.gateway.*;
 import com.agnosticrouter.gmail.security.TokenCipher;
 import java.time.Instant;
