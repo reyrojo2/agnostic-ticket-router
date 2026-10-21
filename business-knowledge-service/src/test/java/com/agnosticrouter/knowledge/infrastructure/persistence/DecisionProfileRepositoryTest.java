@@ -1,6 +1,7 @@
 package com.agnosticrouter.knowledge.infrastructure.persistence;
 
 import com.agnosticrouter.knowledge.domain.model.DecisionProfile;
+import com.agnosticrouter.knowledge.application.port.DecisionProfileStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -32,10 +33,11 @@ class DecisionProfileRepositoryTest {
 
         saved.setName("Perfil actualizado");
         repository.saveAndFlush(saved);
-        assertThat(repository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("Perfil actualizado");
+        DecisionProfileStore store = repository;
+        assertThat(store.findById(saved.getId()).orElseThrow().getName()).isEqualTo("Perfil actualizado");
 
-        repository.deleteById(saved.getId());
+        store.deleteById(saved.getId());
         repository.flush();
-        assertThat(repository.findById(saved.getId())).isEmpty();
+        assertThat(store.findById(saved.getId())).isEmpty();
     }
 }
