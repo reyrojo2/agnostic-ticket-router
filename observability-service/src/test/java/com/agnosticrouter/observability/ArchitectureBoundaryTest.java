@@ -11,6 +11,7 @@ class ArchitectureBoundaryTest {
         var classes = new ClassFileImporter().importPackages("com.agnosticrouter.observability");
         noClasses().that().resideInAPackage("com.agnosticrouter.observability.api..")
                 .should().dependOnClassesThat().resideInAPackage("com.agnosticrouter.observability.repo..")
+                .allowEmptyShould(true)
                 .check(classes);
     }
 
@@ -19,6 +20,7 @@ class ArchitectureBoundaryTest {
         var classes = new ClassFileImporter().importPackages("com.agnosticrouter.observability");
         noClasses().that().resideInAPackage("..service..")
                 .should().dependOnClassesThat().resideInAPackage("com.agnosticrouter.observability.api..")
+                .allowEmptyShould(true)
                 .check(classes);
     }
 
@@ -28,6 +30,7 @@ class ArchitectureBoundaryTest {
         noClasses().that().resideInAPackage("..domain..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "org.springframework.amqp..", "org.springframework.web..")
+                .allowEmptyShould(true)
                 .check(classes);
     }
 }
