@@ -1,6 +1,6 @@
-package com.agnosticrouter.observability.service;
+package com.agnosticrouter.observability.application.service;
 
-import com.agnosticrouter.observability.repo.RequestTraceRepository;
+import com.agnosticrouter.observability.infrastructure.persistence.RequestTraceRepository;
 import java.time.*;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;

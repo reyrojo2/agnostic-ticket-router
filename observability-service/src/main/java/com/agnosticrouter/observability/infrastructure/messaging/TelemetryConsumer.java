@@ -1,7 +1,7 @@
-package com.agnosticrouter.observability.gateway;
+package com.agnosticrouter.observability.infrastructure.messaging;
 
 import com.agnosticrouter.contracts.*;
-import com.agnosticrouter.observability.repo.RequestTraceRepository;
+import com.agnosticrouter.observability.infrastructure.persistence.RequestTraceRepository;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 

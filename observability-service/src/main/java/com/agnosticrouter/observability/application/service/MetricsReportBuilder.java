@@ -1,4 +1,4 @@
-package com.agnosticrouter.observability.service;
+package com.agnosticrouter.observability.application.service;
 
 import java.time.*;
 import java.util.*;

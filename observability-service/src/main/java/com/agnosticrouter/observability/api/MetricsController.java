@@ -1,6 +1,6 @@
 package com.agnosticrouter.observability.api;
 
-import com.agnosticrouter.observability.service.MetricsService;
+import com.agnosticrouter.observability.application.service.MetricsService;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
