@@ -73,6 +73,10 @@ public class CrmHttpExecutor implements CrmExecutionPort {
 
                 if (successStatuses.contains(response.statusCode())) {
                     String externalId = responseExtractor.extract(response.body(), operation.getExternalIdPath());
+                    String externalNumber = responseExtractor.extract(response.body(), operation.getExternalNumberPath());
+                    if (externalNumber == null) {
+                        externalNumber = readCreatedNumber(operation, path, url, headers, externalId);
+                    }
                     return new CrmExecutionResult(
                             true,
                             response.statusCode(),
@@ -80,7 +84,7 @@ public class CrmHttpExecutor implements CrmExecutionPort {
                             response.body(),
                             attempt,
                             null,
-                            responseExtractor.extract(response.body(), operation.getExternalNumberPath())
+                            externalNumber
                     );
                 }
 
@@ -108,6 +112,27 @@ public class CrmHttpExecutor implements CrmExecutionPort {
                 maxAttempts,
                 lastError == null ? "No fue posible completar la operación CRM" : lastError
         );
+    }
+
+    /** Some CRMs assign their visible case number only after the create response is written. */
+    private String readCreatedNumber(CrmOperation operation, String path, String url,
+                                     Map<String, String> headers, String externalId) {
+        if (operation.getExternalNumberPath() == null || operation.getExternalNumberPath().isBlank()
+                || !"POST".equalsIgnoreCase(operation.getHttpMethod())
+                || path == null || !path.matches("/api/v1/[A-Za-z][A-Za-z0-9_]*")
+                || externalId == null || !externalId.matches("[A-Za-z0-9_-]{1,150}")) return null;
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url + "/" + externalId))
+                    .timeout(Duration.ofMillis(Math.max(1000, operation.getTimeoutMs()))).GET();
+            headers.forEach(builder::header);
+            HttpResponse<String> response = httpClient.send(builder.build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() < 200 || response.statusCode() >= 300) return null;
+            return responseExtractor.extract(response.body(), operation.getExternalNumberPath());
+        } catch (Exception ignored) {
+            if (Thread.currentThread().isInterrupted()) Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     private HttpRequest buildRequest(

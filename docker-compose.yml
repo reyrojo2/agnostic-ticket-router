@@ -152,6 +152,7 @@ services:
       dockerfile: Dockerfile.backend
       args: {SERVICE: notification-service}
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "/app/start-with-extra-ca.sh"]
     env_file: [.env]
     environment:
       EUREKA_URL: http://eureka-server:8761/eureka/

@@ -25,6 +25,8 @@ Un mensaje específico del perfil sustituye al mensaje general del mismo momento
 
 Los canales de registro de desarrollo escriben en los logs y no envían correos. No se puede eliminar un canal con mensajes asociados ni deshabilitarlo mientras tiene mensajes activos; primero cambia esos mensajes o desactívalos.
 
+Para Gmail usa `smtp.gmail.com`, puerto `587`, STARTTLS y autenticación con la dirección completa y una contraseña de aplicación. Si el servicio registra `PKIX path building failed`, comprueba el certificado que presenta la conexión SMTP: un antivirus o proxy local puede sustituir el certificado de Google. El servicio acepta opcionalmente `NOTIFICATION_EXTRA_CA_BASE64` en `.env`, con el certificado raíz público y confiable de esa instalación codificado en Base64 DER. Al arrancar, añade esa raíz a una copia del almacén de confianza de Java solo para el servicio de notificaciones. Comprueba la huella del certificado antes de configurarlo; no desactives la verificación TLS.
+
 ## Identificadores y variables
 
 | Variable | Contenido |

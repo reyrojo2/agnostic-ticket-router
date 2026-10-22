@@ -13,6 +13,48 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class CrmHttpExecutorTest {
+    @Test void fetchesVisibleNumberWhenCreateResponseOnlyContainsTheTechnicalId() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/Case", exchange -> {
+            byte[] body;
+            if ("POST".equals(exchange.getRequestMethod())) {
+                body = "{\"id\":\"case-id-6\"}".getBytes(StandardCharsets.UTF_8);
+            } else if ("GET".equals(exchange.getRequestMethod())
+                    && "/api/v1/Case/case-id-6".equals(exchange.getRequestURI().getPath())) {
+                body = "{\"id\":\"case-id-6\",\"number\":6}".getBytes(StandardCharsets.UTF_8);
+            } else {
+                exchange.sendResponseHeaders(404, -1);
+                exchange.close();
+                return;
+            }
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var ticket = mock(StandardTicketEvent.class);
+            var templates = mock(TemplateRenderer.class);
+            when(templates.renderText("/api/v1/Case", ticket)).thenReturn("/api/v1/Case");
+            var executor = new CrmHttpExecutor(templates, mock(CrmPayloadComposer.class),
+                    new ResponseValueExtractor(new ObjectMapper()), mock(CrmAuthenticationConfigurer.class));
+            var integration = new CrmIntegration();
+            integration.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            var operation = new CrmOperation();
+            operation.setPathTemplate("/api/v1/Case");
+            operation.setExternalIdPath("id");
+            operation.setExternalNumberPath("number");
+
+            var result = executor.execute(new CrmExecutionPlan(null, integration, operation), ticket);
+
+            assertTrue(result.success());
+            assertEquals("case-id-6", result.externalId());
+            assertEquals("6", result.externalNumber());
+            assertEquals("6", result.ticketReference());
+        } finally { server.stop(0); }
+    }
+
     @Test void extractsThePublicNumberSeparatelyAndSupportsOtherCrmResponsePaths() throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/api/v1/Case",exchange->{
