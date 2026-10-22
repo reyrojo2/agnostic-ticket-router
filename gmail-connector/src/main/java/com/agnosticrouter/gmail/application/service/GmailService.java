@@ -53,6 +53,8 @@ public class GmailService {
  public Map<String,Object> sync(){
   if(!busy.compareAndSet(false,true))return Map.of("status","busy","processed",0);
   int processed=0;
+  int alreadyProcessed=0;
+  int listed=0;
   try{
    GmailAccount a=repo.account();
    if(a==null||!a.enabled())return Map.of("status","disabled","processed",0);
@@ -63,14 +65,16 @@ public class GmailService {
     List<Map<String,Object>> messages=(List<Map<String,Object>>)listing.getOrDefault("messages",List.of());
     for(int i=messages.size()-1;i>=0;i--){
      String id=String.valueOf(messages.get(i).get("id"));
+     listed++;
+     if(repo.processed(a.email(),id)) { alreadyProcessed++; continue; }
      if(messageProcessor.process(a,token,id))processed++;
     }
     page=(String)listing.get("nextPageToken");if(page==null||page.isBlank())break;
    }
-   repo.synced();return Map.of("status","ok","processed",processed);
+   repo.synced();return Map.of("status","ok","processed",processed,"alreadyProcessed",alreadyProcessed,"listed",listed);
   }catch(Exception ex){
    repo.failed("Falló sincronización ("+ex.getClass().getSimpleName()+"); verifica credenciales y conexión.");
-   return Map.of("status","error","processed",processed,"detail",ex.getClass().getSimpleName());
+   return Map.of("status","error","processed",processed,"alreadyProcessed",alreadyProcessed,"listed",listed,"detail",ex.getClass().getSimpleName());
   }finally{busy.set(false);}
  }
 }
