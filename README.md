@@ -1,738 +1,279 @@
-# AgnosticTicketRouter — Docker Compose y MVP académico
+# Agnostic Ticket Router
 
-AgnosticTicketRouter recibe solicitudes no estructuradas, las transforma en eventos, aplica reglas/IA y envía tickets mediante un adaptador CRM configurable. El **arranque recomendado** para desarrollo y demostración es Docker Desktop, con Spring Cloud Gateway y Eureka.
+**Plataforma configurable de clasificación, enrutamiento y seguimiento de solicitudes.**
 
-## Arranque en Windows con Docker Desktop
+> **Estado:** MVP académico funcional, en evolución hacia un posible producto SaaS. Este repositorio **no es una edición SaaS multiempresa lista para producción**. Versión Maven: \`0.2.0-SNAPSHOT\`.
+>
+> **Tecnologías principales:** Java 21 · Spring Boot 3.4.5 · Spring Cloud 2024.0.3 · Angular 22 · PostgreSQL 16 · RabbitMQ · Docker Compose · EspoCRM (integración de demostración).
 
-1. En la raíz del repositorio, copia `.env.example` a `.env` si todavía no existe. Completa `DB_PASSWORD`, `RABBITMQ_PASSWORD`, `ADMIN_PASSWORD`, `APP_JWT_SECRET` (mínimo 32 bytes) y los tres secretos `ESPOCRM_*` para inicializar una instalación nueva de EspoCRM. Mantén los secretos fuera de Git. Si ya usas los contenedores, **conserva las contraseñas de las bases existentes**: cambiarlas en `.env` no cambia automáticamente las credenciales persistidas.
-2. Detén los JAR Java y `npm start` locales antes de ejecutar el stack, para liberar los puertos 8081–8085, 8090 y 4200. Mantén Docker Desktop abierto.
-3. Desde PowerShell en la raíz:
+## ¿Qué es y qué problema resuelve?
 
-```powershell
+Muchas organizaciones reciben solicitudes no estructuradas por correo, deben identificar manualmente su tipo, prioridad y área responsable y luego crear un caso en un CRM. Esto genera trabajo repetitivo, retrasos, errores de clasificación y escasa trazabilidad.
+
+**Agnostic Ticket Router** separa la definición de las reglas de negocio del motor que toma decisiones y del adaptador que registra el caso en un CRM externo. Permite configurar perfiles de clasificación para distintos procesos sin crear una clase Java por cada tipología.
+
+El sistema implementa:
+
+- **Business Knowledge:** perfiles, dimensiones, opciones, dependencias y reglas HARD/SOFT.
+- **Decision Engine:** decisiones determinísticas primero y proveedor de IA de decisión **SystemOne** cuando sea necesario; revisión cuando una dimensión obligatoria no se resuelve con confianza.
+- **Gmail Connector / Mail Ingestion:** lectura autorizada de Gmail o ingreso REST, publicación en RabbitMQ y control de mensajes procesados.
+- **CRM Adapter:** integración REST configurable, mapeo de dimensiones a campos reales, equivalencias de valores, asignaciones de equipos/responsables, catálogo EspoCRM, validación y vista previa del JSON.
+- **Notifications:** canales LOG/SMTP, plantillas por evento y perfil, vista previa, envío del número público del caso y credenciales SMTP cifradas.
+- **Observability:** estados, indicadores, seguimiento por \`requestId\` y diagnósticos de clasificación.
+
+El proyecto incluye **Angular** para administración y demostración, **Spring Cloud Gateway** como entrada HTTP y **Eureka** para descubrimiento de servicios.
+
+## Flujo de extremo a extremo
+
+\`\`\`text
+Gmail (OAuth) ──> Gmail Connector ──┐
+                                   ├──> Mail Ingestion ──> RabbitMQ (correo recibido)
+REST / formulario de prueba ────────┘                              |
+                                                                    v
+                                               Decision Engine <── Business Knowledge
+                                              reglas HARD / SOFT    perfiles y dimensiones
+                                                    | 
+                                           SystemOne (opcional)
+                                                    |
+                                       decisión válida o revisión
+                                                    |
+                                  RabbitMQ (ticket estandarizado)
+                                                    |
+                                                    v
+                                             CRM Adapter
+                                  rutas + mapeos + equipo/responsable
+                                                    |
+                                               REST EspoCRM
+                                                    |
+                                   eventos de resultado / CRM_CREATED
+                                                    |
+                                        Notifications + Observability
+
+Angular ──> Nginx / Spring Cloud Gateway ──> Eureka / APIs administrativas
+\`\`\`
+
+1. La ingesta acepta una solicitud y publica un evento; **HTTP 202 no confirma** que el caso exista en el CRM.
+2. Decision Engine consulta la configuración del perfil y resuelve cada dimensión mediante reglas HARD concluyentes antes de solicitar IA.
+3. Las reglas SOFT aportan pistas; el proveedor SystemOne puede completar dimensiones pendientes. Se comprueban los umbrales de confianza y margen.
+4. Si el ticket requiere revisión, **no se crea automáticamente** un caso como si hubiese sido clasificado correctamente.
+5. Si es apto, CRM Adapter selecciona una ruta, genera el JSON según los mapeos configurados y llama a la API externa.
+6. El resultado CRM, incluido su **ID técnico** y su **número público** cuando exista, alimenta notificaciones y observabilidad.
+
+### Correo Gmail: lectura e idempotencia
+
+Gmail Connector identifica los mensajes mediante **cuenta + ID de Gmail**, consulta PostgreSQL y omite los que ya están registrados como publicados. La interfaz distingue IDs listados, omitidos y nuevos. **No marca automáticamente como leídos los correos**; el conector OAuth es de solo lectura. Volver a consultar la bandeja no implica reprocesar todos los mensajes.
+
+La publicación en RabbitMQ y el registro de procesado no forman una sola transacción; pueden producirse reintentos en fallos excepcionales. La plataforma no promete procesamiento *exactly once*. Consulta [plan de pruebas del correo](docs/EMAIL_TEST_PLAN.md) y [migración de idempotencia](docs/DECISION_IDEMPOTENCY_MIGRATION.md) antes de utilizar bases históricas.
+
+## Arquitectura y módulos
+
+| Módulo / servicio | Función |
+| --- | --- |
+| \`frontend-angular\` | Administración y visualización: dashboard, conocimiento, IA, CRM, notificaciones y Gmail. |
+| \`api-gateway\` | Spring Cloud Gateway: punto de entrada a las APIs, rutas hacia los servicios. |
+| \`eureka-server\` | Registro y descubrimiento de instancias Java. |
+| \`common-contracts\` | Contratos compartidos de eventos; no comparte repositorios entre servicios. |
+| \`mail-ingestion-service\` | Recepción REST y publicación del correo. |
+| \`business-knowledge-service\` | Perfiles, dimensiones, opciones, reglas, autenticación administrativa. |
+| \`decision-engine-service\` | Evaluación HARD/SOFT/SystemOne, idempotencia y diagnósticos. |
+| \`crm-adapter-service\` | Enrutamiento y ejecución CRM, mapeos, equipos, vista previa y auditoría. |
+| \`notification-service\` | Plantillas, eventos y envíos LOG/SMTP. |
+| \`gmail-connector\` | OAuth de Google, consulta de mensajes y deduplicación. |
+| \`observability-service\` | Trazabilidad, indicadores e interpretación de los estados. |
+| \`demo-crm-service\` | API CRM simulada para pruebas independientes de EspoCRM. |
+
+**Separación de responsabilidades:** cada servicio de negocio utiliza, según necesidad, \`api/controller\`, \`application/service\`, \`application/port\`, \`domain\`, \`infrastructure\` y \`config\`. Los casos de uso dependen de puertos propios; los adaptadores implementan JDBC/JPA, HTTP, RabbitMQ y SMTP.
+
+**Spring Cloud implementado:** Gateway, Eureka Discovery y soporte de LoadBalancer para rutas/cliente compatibles. **No se atribuyen** al sistema OpenFeign, Config Server ni Circuit Breaker Resilience4j como componentes implementados. RabbitMQ aporta mensajería asíncrona, pero no es Spring Cloud. El proyecto no demuestra por defecto distribución entre múltiples réplicas.
+
+Detalles de paquetes, interfaces y métodos: [Arquitectura Java](docs/ARCHITECTURE_JAVA.md) · [Distribución de paquetes](docs/PACKAGE_LAYOUT.md).
+
+## Ejecutar todo en Windows con Docker Desktop
+
+### Requisitos
+
+- Docker Desktop con Docker Compose.
+- Git y PowerShell para los comandos de ejemplo.
+- Conexión a Internet durante la primera construcción (imágenes, Maven y npm).
+- **Opcional:** JDK 21 y Maven para ejecutar las pruebas Java fuera de Docker.
+
+### 1. Obtener el código y preparar el entorno
+
+En una instalación nueva:
+
+\`\`\`powershell
+git clone https://github.com/reyrojo2/agnostic-ticket-router.git
+cd agnostic-ticket-router
+Copy-Item .env.example .env
+notepad .env
+\`\`\`
+
+Si ya tienes el repositorio:
+
+\`\`\`powershell
+git switch main
+git pull --ff-only origin main
+\`\`\`
+
+**No reemplaces un \`.env\` existente.** Completa al menos estas variables según tu escenario:
+
+| Variable | Utilidad |
+| --- | --- |
+| \`DB_USER\`, \`DB_PASSWORD\` | Base PostgreSQL de los microservicios. |
+| \`RABBITMQ_USER\`, \`RABBITMQ_PASSWORD\` | Broker de eventos. |
+| \`ADMIN_USER\`, \`ADMIN_PASSWORD\`, \`APP_JWT_SECRET\` | Cuenta administrativa y JWT (secreto robusto de al menos 32 bytes). |
+| \`ESPOCRM_DB_ROOT_PASSWORD\`, \`ESPOCRM_DB_PASSWORD\`, \`ESPOCRM_ADMIN_PASSWORD\` | Primera instalación de EspoCRM y MariaDB. |
+| \`ESPOCRM_API_KEY\` | Usuario API autorizado para la integración CRM. |
+| \`AI_CONFIG_ENCRYPTION_KEY\` | Clave maestra Base64 de **32 bytes** para cifrar claves de proveedores SystemOne. |
+| \`NOTIFICATION_ENCRYPTION_KEY\` | Otra clave maestra Base64 de **32 bytes** para credenciales SMTP. |
+| \`GMAIL_CLIENT_ID\`, \`GMAIL_CLIENT_SECRET\`, \`GMAIL_ENCRYPTION_KEY\` | OAuth y protección de tokens de Gmail, si se utiliza el conector. |
+
+Las claves maestras de IA y notificaciones deben ser **distintas**, generadas aleatoriamente y respaldadas fuera de Git. Si ya hay credenciales cifradas, **no cambies las claves maestras** sin plan de rotación: los datos guardados dejarían de poder descifrarse. Las claves de IA y las contraseñas SMTP se administran desde Angular; no debes introducir secretos en commits o capturas.
+
+### 2. Iniciar los contenedores
+
+\`\`\`powershell
+docker compose config --quiet
 .\scripts\start.ps1
 docker compose ps
-```
-
-4. Abre [Angular](http://localhost:4200), [Eureka](http://localhost:8761), [Gateway](http://localhost:8088/actuator/health), [EspoCRM](http://localhost:8080), [RabbitMQ](http://localhost:15672) y [Mailpit](http://localhost:8025).
-5. Para detener **sin borrar datos**, ejecuta `.\scripts\stop.ps1`. No uses `docker compose down -v`.
-
-El script mantiene **dos proyectos Compose**: el proyecto por defecto (`agnostic-ticket-router`) reúne PostgreSQL, RabbitMQ, Mailpit, siete microservicios Java y Angular; el proyecto separado `agnostic-espo` mantiene EspoCRM y su MariaDB, preservando sus volúmenes existentes. El primer build requiere descargar imágenes, dependencias Maven y paquetes npm, y puede tardar varios minutos.
-
-### Puertos y nombres internos
-
-| Componente | Windows | Desde otro contenedor del stack |
-| --- | --- | --- |
-| Angular + proxy Nginx | http://localhost:4200 | frontend-angular:80 |
-| Eureka Server | http://localhost:8761 | eureka-server:8761 |
-| Spring Cloud Gateway | http://localhost:8088 | api-gateway:8088 |
-| PostgreSQL | localhost:5433 | postgres:5432 |
-| RabbitMQ / administración | localhost:5672 / http://localhost:15672 | rabbitmq:5672 |
-| Mailpit SMTP / UI | localhost:1025 / http://localhost:8025 | mailpit:1025 |
-| Business Knowledge | localhost:8082 | business-knowledge-service:8082 |
-| Mail Ingestion | localhost:8081 | mail-ingestion-service:8081 |
-| Decision Engine | localhost:8083 | decision-engine-service:8083 |
-| CRM Adapter | localhost:8084 | crm-adapter-service:8084 |
-| Notification Service | localhost:8085 | notification-service:8085 |
-| Demo CRM | localhost:8090 | demo-crm-service:8090 |
-| EspoCRM | http://localhost:8080 | host.docker.internal:8080 |
-| Laya (opcional) | localhost:8000 | laya:8000 si usa perfil ai |
-
-Angular usa URLs **relativas** y Nginx reenvía las llamadas a **Spring Cloud Gateway**, que descubre los microservicios Java mediante Eureka. El comando `npm start` sigue disponible para desarrollo fuera de Docker mediante `frontend-angular/proxy.conf.json`.
-
-### Laya opcional
-
-Laya no forma parte del arranque básico porque su checkpoint requiere recursos y descarga propia. Si deseas intentar contenerizarlo, configura en `.env` `AI_BASE_URL_DOCKER=http://laya:8000` y ejecuta `.\scripts\start.ps1 -WithAI`. No se ha validado el comportamiento del paquete/checkpoint dentro de este entorno Docker; revisa logs de Laya y el endpoint `/health`. Si Laya ya funciona en Windows, deja `AI_BASE_URL_DOCKER=http://host.docker.internal:8000` y ejecuta sin `-WithAI`.
-
-### Integraciones y datos existentes
-
-Las rutas de integración CRM, canales SMTP y perfiles ya guardados en PostgreSQL **no se reescriben** al cambiar a Docker. Corrige manualmente en Angular las URLs antiguas `http://localhost:8090` (Demo CRM) y `http://localhost:8080` (EspoCRM): usa `http://demo-crm-service:8090` y `http://host.docker.internal:8080`, respectivamente. Para Mailpit en el canal de notificaciones usa host `mailpit`, puerto 1025, sin autenticación ni TLS.
-
-EspoCRM sigue usando su MariaDB propia. Su correo SMTP saliente hacia Mailpit puede continuar usando `host.docker.internal:1025` con la excepción específica `emailServerAllowedAddressList` aplicada previamente al contenedor. No se conecta automáticamente un Gmail de entrada.
-
-### Correcciones de arranque: Flyway y Decision Engine
-
-Los servicios CRM Adapter y Notification fallaban al intentar crear sus tablas Flyway de historial en el esquema compartido `public`. Ahora cada módulo dispone de un esquema propio: `crm_adapter` y `notifications`. Business Knowledge conserva `public`, incluyendo el perfil `TELCO_DEMO`. Decision Engine también corrige el nombre duplicado del bean `knowledgeClient`.
-
-**No se eliminan datos de `public`.** Si existen tablas heredadas `public.crm_*` o `public.notification_*` con configuraciones, **no se copian automáticamente** a los nuevos esquemas. Antes de migrarlas, revisa su contenido y respaldo. Los scripts Flyway crean registros de ejemplo en los nuevos esquemas.
-
-Desde la rama `feat/docker-full-stack`, con Docker Desktop encendido:
-
-```powershell
-git pull
-docker compose up -d --build crm-adapter-service notification-service decision-engine-service
-docker compose ps
-docker compose logs --tail=50 crm-adapter-service notification-service decision-engine-service
-```
-
-Comprobar los datos (ajusta el usuario si no es `router`):
-
-```powershell
-docker compose exec postgres psql -U router -d agnostic_router -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_name IN ('decision_profile','crm_integration','notification_channel') ORDER BY 1,2;"
-docker compose exec postgres psql -U router -d agnostic_router -c "SELECT code, active FROM public.decision_profile;"
-```
-
-La configuración de `DEMO_CRM` puede necesitar sustituir su URL antigua `localhost:8090` por `http://demo-crm-service:8090` desde Angular. EspoCRM debe alcanzarse mediante `http://host.docker.internal:8080` desde el contenedor CRM Adapter.
-
-Si Angular no muestra `TELCO_DEMO` aunque exista en SQL, inspecciona la respuesta HTTP de `/api/v1/admin/profiles` en DevTools antes de modificar la base de datos.
-
-## Validación y resolución de problemas
-
-```powershell
-docker compose config --quiet
-docker compose ps
-docker compose logs --tail=100 business-knowledge-service
-docker compose logs -f mail-ingestion-service decision-engine-service crm-adapter-service notification-service
 docker compose -p agnostic-espo -f compose.espocrm.yml ps
-```
+\`\`\`
 
-Si falla la compilación, ejecuta `docker compose build --no-cache frontend-angular` o `docker compose build business-knowledge-service`, según el servicio afectado. Para las pruebas académicas usa Maven/JDK 21 y ejecuta `mvn clean test` fuera de Docker; el Dockerfile omite las pruebas **solo durante el empaquetado de imágenes**.
+\`start.ps1\` inicia dos proyectos Compose: la plataforma (\`docker-compose.yml\`) y EspoCRM con su MariaDB (\`compose.espocrm.yml\`). **No ejecutes simultáneamente** servidores Java/Angular locales que utilicen los mismos puertos.
 
-### Probar el flujo antes de integrar Gmail
+| Interfaz / recurso | Dirección local |
+| --- | --- |
+| Angular | http://localhost:4200 |
+| Spring Cloud Gateway | http://localhost:8088 |
+| Eureka | http://localhost:8761 |
+| EspoCRM | http://localhost:8080 |
+| RabbitMQ (administración) | http://localhost:15672 |
+| Mailpit (correos de prueba) | http://localhost:8025 |
+| Business Knowledge | http://localhost:8082 |
+| Decision Engine | http://localhost:8083 |
+| CRM Adapter | http://localhost:8084 |
+| Notifications | http://localhost:8085 |
+| Mail Ingestion | http://localhost:8081 |
+| Demo CRM | http://localhost:8090 |
 
-Consulta [Plan de pruebas de correo y end-to-end](docs/EMAIL_TEST_PLAN.md). El formulario Angular **Demo de correo** publica una solicitud REST, no descarga mensajes de una bandeja real. Mailpit simula la **recepción SMTP saliente**. La futura lectura de Gmail/IMAP es una fase de desarrollo independiente, no una funcionalidad completada por esta Dockerización.
+PostgreSQL usa \`localhost:5433\` desde Windows y \`postgres:5432\` desde Docker. Gmail Connector y Observability operan en la red interna y se consultan mediante rutas del gateway.
 
----
+Para detener **sin borrar datos**:
 
-## EspoCRM principal y perfil visible en Angular
+\`\`\`powershell
+.\scripts\stop.ps1
+\`\`\`
 
-La migración **V3** de CRM Adapter configura `ESPOCRM_LOCAL` como integración principal del perfil `TELCO_DEMO` y desactiva `DEMO_CRM` sin borrar la integración anterior. Crea la operación `POST /api/v1/Case`, con header `X-Api-Key` resuelto mediante `ENV:ESPOCRM_API_KEY`, sin guardar el token en PostgreSQL. Para evitar duplicados, la operación realiza un solo intento. Puedes ajustar el mapeo JSON desde Angular.
+No ejecutes \`docker compose down -v\` si necesitas conservar PostgreSQL, el historial de Gmail y las configuraciones del CRM.
 
-**Antes de arrancar**, añade a tu `.env` (no se sube a Git):
+### 3. Reconstruir tras un \`git pull\`
 
-```dotenv
-ESPOCRM_API_KEY=LA_CLAVE_DE_TU_USUARIO_API_EN_ESPOCRM
-```
-
-La cuenta API de EspoCRM debe estar activa y tener permiso para crear `Case`. No se puede inferir la clave desde GitHub. Los casos que no puedan clasificarse completamente pueden necesitar SystemOne/Laya o revisión humana antes de enviarse al CRM.
-
-En PowerShell, con la rama del PR:
-
-```powershell
-git pull
-docker compose up -d --build crm-adapter-service frontend-angular
-docker compose logs --tail=80 crm-adapter-service
-```
-
-Para verificar las migraciones y la ruta:
-
-```powershell
-docker compose exec postgres psql -U router -d agnostic_router -c "SELECT code,base_url,active FROM crm_adapter.crm_integration;"
-docker compose exec postgres psql -U router -d agnostic_router -c "SELECT profile_code,integration_code,operation_code,active FROM crm_adapter.crm_route;"
-```
-
-**El perfil `TELCO_DEMO` ya existe en PostgreSQL**, no lo vuelvas a crear. Si Angular continúa sin mostrarlo, la pantalla Business Knowledge ahora muestra el código HTTP de la consulta `GET /api/v1/admin/profiles` y permite reintentar. Un `401` indica que debes cerrar sesión y volver a ingresar para obtener un JWT válido; `502/503` apunta al proxy/backend; `500` requiere examinar `docker compose logs business-knowledge-service`. La aparición del nombre `admin` en la barra lateral no garantiza que el token JWT siga vigente, pues Angular guarda la sesión en almacenamiento local.
-
-En DevTools de Chrome (F12 → Network), filtra `profiles`, recarga y revisa la pestaña **Response** y el código HTTP. Nunca compartas el header `Authorization` ni el contenido del token.
-
-## Consola operativa: Gmail, EspoCRM, respuestas y métricas (fase de integración)
-
-El menú **Buzón Gmail** conecta una cuenta de prueba con autorización OAuth 2.0 de solo lectura. El conector publica los mensajes nuevos en `mail-ingestion-service`, que mantiene el flujo RabbitMQ → Decision Engine → CRM Adapter. Ya no es necesario enviar solicitudes manuales desde «Demo de correo».
-
-Antes de iniciar el conector, configura la **Gmail API** y la pantalla de consentimiento OAuth en Google Cloud. Crea un cliente OAuth de tipo **Web application** con URI de redirección exacta `http://localhost:4200/api/v1/gmail/oauth/callback`. Agrega tu cuenta de pruebas como usuario de prueba si Google lo requiere. No publiques el `client_secret`.
-
-Añade a tu archivo privado `.env`:
-
-```dotenv
-GMAIL_CLIENT_ID=TU_CLIENT_ID_DE_GOOGLE
-GMAIL_CLIENT_SECRET=TU_SECRETO_GOOGLE
-GMAIL_ENCRYPTION_KEY=CLAVE_FERNET
-GMAIL_POLL_SECONDS=90
-ESPOCRM_API_KEY=CLAVE_API_DE_USUARIO_ESPOCRM
-```
-
-La clave Fernet se genera localmente con Python y `cryptography`:
-
-```powershell
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-**No ejecutes varias instancias del conector sobre el mismo buzón**. En este MVP se utiliza una sola cuenta de prueba y una base SQLite persistente para los tokens y los ID de mensajes procesados. La consulta está deshabilitada por defecto hasta que se habilite desde Angular. Los mensajes se leen pero no se marcan como leídos. La consola Gmail ofrece filtros legibles: «No leídos», «Últimas 24 horas», «Toda la bandeja», y asunto opcional. Si el asunto está vacío, se aceptan todos los asuntos. La consulta de toda la bandeja puede procesar correos antiguos: usa un buzón dedicado. La deduplicación es local al conector y no asegura exactamente una creación de ticket en caso de caída entre publicación y registro.
-
-El dashboard ahora consulta `observability-service`, que consume tres eventos de RabbitMQ: correo recibido, ticket estandarizado y resultado CRM. Guarda **solo identificador, fecha, clasificación resumida y estado**, no almacena cuerpo ni asunto del correo. Muestra los 7 días recientes (zona America/Lima), reglas vs IA, decisiones no aceptadas, revisión, casos creados y errores. Los eventos emitidos antes de desplegar observabilidad **no se reconstruyen retroactivamente**. El estado `pendiente` puede incluir solicitudes fallidas en Decision Engine para las que no se emitió un ticket estándar.
-
-### Respuestas programadas en Angular
-
-El menú **Notificaciones** configura canales SMTP y plantillas por perfil/evento. Para pruebas:
-- Canal SMTP: código `MAILPIT_LOCAL`, host `mailpit`, puerto `1025`, From `no-reply@demo.test`, Auth y STARTTLS **desactivados**.
-- Plantilla `EMAIL_RECEIVED`: acuse de recibo a `{{from}}`.
-- Plantilla `CRM_CREATED`: confirmación con `{{data.externalTicketId}}` al destinatario `{{recipient}}`.
-- Plantilla `REVIEW_REQUIRED`: informar que la solicitud requiere revisión sin afirmar que se creó un Case.
-- Plantilla `CRM_ERROR`: notificar que la integración falló sin afirmar éxito.
-
-Los eventos ya se generan en Java; para enviar SMTP debes **seleccionar el canal SMTP en cada plantilla y guardar**. Por defecto las plantillas históricas envían al canal LOG, por lo que no se envían correos reales ni de prueba automáticamente. Para producción será necesaria una política explícita de remitentes, plantillas, límites y manejo de errores de entrega. Esta fase no implementa un calendario de envíos diferidos.
-
-### Reconstrucción
-
-```powershell
-git pull
-docker compose up -d --build gmail-connector observability-service frontend-angular
-docker compose ps
-docker compose logs --tail=80 gmail-connector observability-service
-```
-
-Verifica en Angular `/gmail` y en el dashboard `/`. La conexión OAuth y la prueba end-to-end con Gmail y EspoCRM **dependen de tus credenciales privadas y requieren validación local**; el CI solo valida compilación, no la conexión real.
-
-## Arquitectura y especificación funcional existente
-
-AgnosticTicketRouter es una plataforma orientada a eventos para convertir solicitudes no estructuradas en **tickets estándar**, tomar decisiones configurables con reglas + IA y enviarlas a APIs externas sin acoplar el motor a un negocio o CRM concreto.
-
-La versión 0.2 implementa tres niveles de configuración separados:
-
-1. **Business Knowledge**: qué debe decidirse y qué significa cada alternativa.
-2. **Decision Engine**: cómo se evalúan reglas e IA sin conocer el rubro.
-3. **CRM Adapter / Notifications**: cómo se ejecutan integraciones y comunicaciones externas.
-
-## Arquitectura
-
-```text
-Correo / REST
-     |
-     v
-mail-ingestion-service :8081
-     |
-     v
-RabbitMQ -> email.received
-     |
-     +---------------------> notification-service :8085
-     |                           |
-     v                           +--> LOG / SMTP
-business-knowledge-service :8082
-     ^
-     | consulta perfiles
-     |
-decision-engine-service :8083 ----> System One (Laya / Kev / Jev compatible)
-     |
-     v
-RabbitMQ -> ticket.standardized
-     |
-     v
-crm-adapter-service :8084
-     |
-     +--> ruta configurable
-     +--> auth configurable
-     +--> plantilla JSON configurable
-     +--> API CRM externa
-     |
-     v
-RabbitMQ -> system.event
-     |
-     v
-notification-service
-
-Angular :4200
-  -> Business Knowledge
-  -> CRM Adapter Admin
-  -> Notification Admin
-  -> Demo de ingreso
-```
-
-## Módulos
-
-- `common-contracts`: contratos de eventos compartidos.
-- `mail-ingestion-service` `:8081`: recibe un correo por REST y publica `email.received`.
-- `business-knowledge-service` `:8082`: perfiles, dimensiones, opciones y reglas en PostgreSQL. Emite JWT para el frontend.
-- `decision-engine-service` `:8083`: aplica reglas HARD/SOFT y consulta un proveedor System One cuando corresponde.
-- `crm-adapter-service` `:8084`: adaptador REST configurable para múltiples CRM/APIs.
-- `notification-service` `:8085`: canales y plantillas configurables. Implementa `LOG` y `SMTP`.
-- `demo-crm-service` `:8090`: API externa simulada para probar el adapter sin depender de un CRM real.
-- `frontend-angular` `:4200`: administración visual y demo end-to-end.
-
-## Requisitos
-
-Backend:
-
-- Java 21+
-- Maven 3.9+
-- PostgreSQL
-- RabbitMQ
-- Un proveedor compatible con `POST /v1/systemone` (por ejemplo Laya; el cliente queda desacoplado mediante `DecisionAiClient`)
-
-Frontend:
-
-- Node.js compatible con Angular 22. El proyecto usa Angular `^22.2.0`.
-- `npm`
-
-La infraestructura puede levantarse con Docker cuando esté disponible:
-
-```bash
-docker compose up -d
-```
-
-Incluye PostgreSQL, RabbitMQ y Mailpit. Docker **no es obligatorio para el código**: los servicios aceptan host/puerto por variables de entorno.
-
-## Base de datos
-
-Los tres servicios persistentes usan la misma base `agnostic_router`, pero cada dominio administra sus propias tablas:
-
-- Business Knowledge: `decision_*`, `app_user`.
-- CRM Adapter: `crm_*`.
-- Notifications: `notification_*`.
-
-Flyway usa historiales separados para CRM y Notification, mientras Business Knowledge conserva el historial estándar para mantener compatibilidad con el starter anterior.
-
-> Si ya ejecutaste una versión intermedia que usó otra tabla de historial Flyway, lo más simple en desarrollo es recrear la base antes de probar v0.2.
-
-## Seguridad y login
-
-El usuario administrativo inicial se crea en PostgreSQL al primer arranque usando `ADMIN_USER` y `ADMIN_PASSWORD`. La contraseña se almacena únicamente como hash BCrypt. El repositorio no contiene una contraseña predeterminada.
-
-Login:
-
-```http
-POST http://localhost:8082/api/auth/login
-Content-Type: application/json
-
-{
-  "username": "<ADMIN_USER>",
-  "password": "<ADMIN_PASSWORD>"
-}
-```
-
-La respuesta contiene JWT. El mismo JWT se valida en:
-
-- Business Knowledge Admin.
-- CRM Adapter Admin.
-- Notification Admin.
-
-Todos deben compartir la misma variable:
-
-```text
-APP_JWT_SECRET=<valor-definido-en-el-entorno>
-```
-
-El valor debe tener al menos 32 bytes y no se almacena en el repositorio.
-
-## Business Knowledge genérico
-
-El motor no contiene clases `ProductClassifier`, `BankClassifier`, etc. Consume una colección de dimensiones.
-
-El perfil demo contiene:
-
-```text
-TELCO_DEMO
-  1. PRODUCTO
-  2. TIPO_GESTION
-  3. PRIORIDAD
-  4. DESTINO
-```
-
-Otro perfil puede tener cualquier número de dimensiones.
-
-Tipos soportados:
-
-- `CHOICE`
-- `SCORE`
-- `NOUL`
-
-Las opciones contienen:
-
-- `description`
-- `includeContext`
-- `excludeContext`
-- prioridad
-- dependencias
-
-Las reglas pueden ser:
-
-- `HARD`: si existe un único resultado consistente, se decide sin IA.
-- `SOFT`: no fuerza una decisión; se agrega como `business_hints` al estado enviado al motor de IA.
-
-Tipos de regla:
-
-- `CONTAINS_ANY`
-- `CONTAINS_ALL`
-- `REGEX`
-
-El Decision Engine también envía a la IA las decisiones ya resueltas en `resolved_decisions`, permitiendo decisiones jerárquicas.
-
-### CRUD Business Knowledge
-
-```text
-GET/POST        /api/v1/admin/profiles
-PUT/DELETE      /api/v1/admin/profiles/{id}
-GET/POST        /api/v1/admin/profiles/{profileId}/dimensions
-PUT/DELETE      /api/v1/admin/dimensions/{id}
-GET/POST        /api/v1/admin/dimensions/{dimensionId}/options
-PUT/DELETE      /api/v1/admin/options/{id}
-GET/POST        /api/v1/admin/dimensions/{dimensionId}/rules
-PUT/DELETE      /api/v1/admin/rules/{id}
-```
-
-Runtime público usado por el Decision Engine:
-
-```http
-GET /api/v1/runtime/profiles/{profileCode}
-```
-
-## Decision Engine y proveedor de IA
-
-El Decision Engine genera preguntas a partir de la configuración de Business Knowledge. La capa Java depende de `DecisionAiClient`, no de una clase de negocio específica. La implementación incluida usa el contrato `/v1/systemone`, por lo que puede apuntar a Laya y a otros proveedores compatibles cambiando configuración.
-
-Para `CHOICE`, una decisión automática requiere inicialmente:
-
-```text
-p(primera) >= autoMinProbability
-AND
-p(primera) - p(segunda) >= minMargin
-AND
-el proveedor no marcó low_confidence
-AND
-el input no fue truncado
-```
-
-Los valores son configurables por dimensión.
-
-Si una dimensión requerida no es aceptada:
-
-```text
-StandardTicketEvent.requiresHumanReview = true
-```
-
-En ese caso el CRM Adapter no ejecuta la API y emite `REVIEW_REQUIRED`.
-
-## CRM Adapter genérico
-
-El Adapter ya no contiene lógica `SalesforceAdapter`, `ZendeskAdapter`, etc. Se configura en PostgreSQL.
-
-### `crm_integration`
-
-Define:
-
-- código y nombre
-- `baseUrl`
-- autenticación
-- headers comunes
-- referencia a secretos
-
-Auth soportada:
-
-- `NONE`
-- `BASIC`
-- `BEARER`
-- `API_KEY_HEADER`
-- `OAUTH2_CLIENT_CREDENTIALS`
-
-Las credenciales no se resuelven por nombre de CRM. Se utilizan referencias:
-
-```text
-ENV:CRM_TOKEN
-ENV:CRM_USER
-```
-
-Para producto real se recomienda sustituir `SecretResolver` por Secrets Manager, Vault o equivalente.
-
-### `crm_operation`
-
-Define una operación REST:
-
-- método HTTP
-- path
-- `Content-Type`
-- headers específicos
-- body template
-- códigos HTTP de éxito
-- path del identificador externo
-- timeout
-- cantidad de intentos
-- espera entre reintentos
-
-Ejemplo de body configurable:
-
-```json
-{
-  "title": "{{subject}}",
-  "description": "{{body}}",
-  "requester": "{{sender}}",
-  "product": "{{decisions.PRODUCTO.value}}",
-  "priority": "{{decisions.PRIORIDAD.value}}"
-}
-```
-
-Si un valor JSON completo es un placeholder, el renderer conserva su tipo JSON. Si el placeholder forma parte de un texto, se interpola como texto.
-
-### Lectura de respuesta
-
-`externalIdPath` admite:
-
-```text
-data.caseNumber
-```
-
-o JSON Pointer:
-
-```text
-/data/caseNumber
-```
-
-### `crm_route`
-
-Selecciona integración y operación según perfil y, opcionalmente, una decisión.
-
-Ruta general:
-
-```text
-profileCode = TELCO_DEMO
-dimensionCode = null
-optionCode = null
-integrationCode = DEMO_CRM
-operationCode = CREATE_TICKET
-```
-
-Ruta condicional:
-
-```text
-profileCode = TELCO_DEMO
-dimensionCode = DESTINO
-optionCode = SOPORTE
-integrationCode = CRM_SOPORTE
-operationCode = CREATE_CASE
-```
-
-La prioridad menor se evalúa primero.
-
-### CRUD CRM
-
-```text
-GET/POST        /api/v1/admin/crm/integrations
-PUT/DELETE      /api/v1/admin/crm/integrations/{id}
-GET/POST        /api/v1/admin/crm/integrations/{id}/operations
-PUT/DELETE      /api/v1/admin/crm/operations/{id}
-GET/POST        /api/v1/admin/crm/routes
-PUT/DELETE      /api/v1/admin/crm/routes/{id}
-```
-
-## Demo CRM
-
-El servicio `demo-crm-service` simula un CRM real:
-
-```http
-POST http://localhost:8090/api/tickets
-```
-
-Responde:
-
-```json
-{
-  "success": true,
-  "data": {
-    "caseNumber": "CASE-1001"
-  }
-}
-```
-
-El seed del CRM Adapter ya está configurado para extraer:
-
-```text
-data.caseNumber
-```
-
-Esto permite demostrar que cambiar la API destino es configuración y no lógica del Decision Engine.
-
-## Notification Service
-
-La configuración está separada en:
-
-### `notification_channel`
-
-Tipos actuales:
-
-- `LOG`: desarrollo/demo.
-- `SMTP`: correo real.
-
-SMTP soporta:
-
-- host
-- port
-- username/password mediante referencias `ENV:`
-- SMTP Auth
-- STARTTLS
-- from address
-
-### `notification_template`
-
-Configurable por:
-
-- `profileCode`
-- `eventType`
-- `channelCode`
-- destinatario
-- asunto
-- cuerpo
-
-Eventos demo:
-
-- `EMAIL_RECEIVED`
-- `CRM_CREATED`
-- `REVIEW_REQUIRED`
-- `CRM_ERROR`
-
-Ejemplo:
-
-```text
-recipientTemplate = {{recipient}}
-subjectTemplate   = Ticket creado - {{requestId}}
-bodyTemplate      = Ticket externo: {{data.externalTicketId}}
-```
-
-Si no existe plantilla específica para el perfil, se busca una con `profileCode = *`.
-
-### CRUD Notification
-
-```text
-GET/POST        /api/v1/admin/notifications/channels
-PUT/DELETE      /api/v1/admin/notifications/channels/{id}
-GET/POST        /api/v1/admin/notifications/templates
-PUT/DELETE      /api/v1/admin/notifications/templates/{id}
-```
-
-## Frontend Angular
-
-Carpeta:
-
-```text
-frontend-angular/
-```
-
-Pantallas implementadas:
-
-- Login JWT.
-- Dashboard.
-- Business Knowledge.
-- Integraciones CRM.
-- Notificaciones.
-- Demo de ingreso de correo.
-
-Instalación:
-
-```bash
-cd frontend-angular
-npm install
-npm start
-```
-
-Abrir:
-
-```text
-http://localhost:4200
-```
-
-Las URLs de los microservicios están centralizadas en:
-
-```text
-frontend-angular/src/app/core/api.config.ts
-```
-
-## Compilar backend
-
-Desde la raíz:
-
-```bash
-mvn clean package
-```
-
-Se incluye una prueba JPA académica que valida insertar, listar, actualizar y eliminar `DecisionProfile`.
-
-## Orden recomendado de ejecución
-
-Infraestructura:
-
-```bash
-docker compose up -d
-```
-
-Luego el proveedor de IA. Para Laya consulta `laya/README.md`.
-
-Backend, en terminales separadas:
-
-```bash
-mvn -pl business-knowledge-service spring-boot:run
-mvn -pl decision-engine-service spring-boot:run
-mvn -pl mail-ingestion-service spring-boot:run
-mvn -pl crm-adapter-service spring-boot:run
-mvn -pl notification-service spring-boot:run
-mvn -pl demo-crm-service spring-boot:run
-```
-
-Frontend:
-
-```bash
-cd frontend-angular
-npm install
-npm start
-```
-
-Finalmente abre Angular y usa **Demo de correo**.
-
-## Sin Docker / Windows sin administrador
-
-Docker no forma parte del código de negocio. Puedes usar servicios instalados o remotos configurando:
-
-```text
-DB_URL
-DB_USER
-DB_PASSWORD
-RABBITMQ_HOST
-RABBITMQ_PORT
-RABBITMQ_USER
-RABBITMQ_PASSWORD
-AI_BASE_URL
-AI_API_KEY
-AI_MODEL
-AI_LANG
-```
-
-La limitación práctica es que para ejecutar el flujo completo necesitas acceso a PostgreSQL y RabbitMQ en alguna máquina.
-
-## Qué queda fuera de v0.2
-
-La versión ya implementa configuración genérica para REST/JSON, notificación SMTP y frontend. Aún quedan como evoluciones:
-
-- ingestión IMAP/Microsoft Graph/Gmail Webhook real;
-- adjuntos binarios end-to-end;
-- APIs SOAP o multipart específicas;
-- API key por query string;
-- OAuth2 flows distintos de Client Credentials;
-- DLQ y reintentos administrados por RabbitMQ;
-- idempotencia persistente ante reentregas;
-- auditoría histórica de cambios de configuración;
-- pantalla de revisión humana de tickets dudosos;
-- gestión de usuarios/roles desde Angular;
-- secret manager real;
-- observabilidad distribuida (trace/correlation ID).
-
-Estas limitaciones no afectan la demostración académica de Spring, REST, persistencia, seguridad, Angular, RabbitMQ y arquitectura de microservicios.
-
-
-## Spring Cloud (Gateway y Eureka)
-
-Se incorporaron Spring Cloud **2024.0.3** con Spring Boot **3.4.5**, el servicio `eureka-server` (8761) y `api-gateway` (8088). Los cinco servicios Java principales se registran en Eureka; Decision Engine consulta Business Knowledge mediante `@LoadBalanced RestClient.Builder` y el nombre lógico `http://business-knowledge-service`.
-
-- `http://localhost:8761`: comprobar las aplicaciones registradas, incluido Gateway.
-- `http://localhost:8088/actuator/health`: salud del Gateway.
-- `http://localhost:4200`: Nginx redirige `/api/**` a Gateway; Angular no requiere nuevas URLs.
-- El Gateway envía solicitudes a los servicios Java registrados en Eureka mediante rutas `lb://`. Gmail Connector y Observability también están implementados en Java y registrados en Eureka.
-- RabbitMQ mantiene los eventos `email.received`, `ticket.standardized` y `system.event`. No se modifica EspoCRM ni su base MariaDB.
-
-### Comprobación en Windows
-
-```powershell
-git switch main
-git pull --ff-only
-docker compose -p agnostic-espo -f compose.espocrm.yml up -d
+\`\`\`powershell
 docker compose up -d --build
 docker compose ps
-docker compose logs --tail=80 eureka-server api-gateway decision-engine-service
-```
+\`\`\`
 
-No ejecutes `docker compose down -v`: elimina volúmenes y puede destruir datos de PostgreSQL. Prueba el flujo Gmail → RabbitMQ → EspoCRM otra vez; GitHub Actions comprueba compilación, pero no conoce tus secretos ni puede validar el flujo real de tu cuenta Gmail.
+Para reconstruir solo un servicio:
 
+\`\`\`powershell
+docker compose up -d --build --no-deps decision-engine-service
+\`\`\`
 
-## Unificación backend Java/Spring (rama feature/java-unified-stack)
+Si un contenedor aparece como \`Restarting\`, revisa **sus propios registros**, no presupongas que el error es de Angular:
 
-Los servicios `gmail-connector` y `observability-service` se implementaron nuevamente con **Java 21, Spring Boot, Eureka Client y Spring Cloud Gateway**. La interfaz Angular y las API `/api/v1/admin/gmail/**` y `/api/v1/admin/metrics/**` mantienen sus contratos existentes. Los archivos Python heredados fueron eliminados: Docker usa únicamente las implementaciones Java. DemoCRM no se requiere para el flujo de EspoCRM.
+\`\`\`powershell
+docker compose logs --tail=150 decision-engine-service
+docker compose logs --tail=150 notification-service
+docker compose logs -f mail-ingestion-service decision-engine-service crm-adapter-service
+\`\`\`
 
-### Primer corte del conector Gmail
+Si necesitas Laya local existe el perfil opcional \`ai\` (\`.\scripts\start.ps1 -WithAI\`); su checkpoint y compatibilidad de inferencia deben validarse por separado. **No es obligatorio iniciar Laya** para las rutas que se resuelvan mediante reglas HARD.
 
-La versión Python mantiene sus datos previos en el volumen `gmail_data`, **que no se borra**. El nuevo servicio utiliza PostgreSQL (esquema `gmail_connector`) y cifrado AES-GCM de tokens. Por seguridad **no reutiliza las credenciales Fernet de SQLite**: requiere **volver a conectar OAuth**. La lectura automática comienza deshabilitada. Los ID de mensajes procesados del SQLite anterior se importan automáticamente y de forma idempotente desde el volumen `gmail_data` montado en modo **solo lectura**; el sistema rechaza el arranque si el historial existente no puede importarse. No migra contraseñas ni tokens. Tras volver a autorizar OAuth, usa primero «Últimas 24 horas» en una bandeja exclusiva. Haz una copia de seguridad del volumen `gmail_data` y PostgreSQL antes de actualizar.
+## Configurar y demostrar la plataforma
 
-Antes de levantar el stack, haz una copia de seguridad de los datos. Después comprueba `http://localhost:8761`, `http://localhost:4200/gmail`, el dashboard y una solicitud real de prueba. CI demuestra compilación y construcción de imágenes, **no** acceso real a Gmail, validación de OAuth ni creación final de Case en EspoCRM.
+### A. Business Knowledge
+
+En **Business Knowledge**, crea o selecciona un perfil (p. ej. \`TELCO_DEMO\`) y configura decisiones como PRODUCTO, TIPO_GESTION, PRIORIDAD y DESTINO. Cada dimensión dispone de opciones, instrucciones, condiciones y reglas.
+
+- **HARD:** clasifica sin IA cuando el resultado es concluyente.
+- **SOFT:** orienta, pero no fuerza, la elección; se consideran el contexto y los umbrales.
+- **Revisión:** una dimensión obligatoria no aceptada impide crear el caso automáticamente.
+
+[Guía de conocimiento y proveedores IA](docs/KNOWLEDGE_AND_AI_GUIDE.md).
+
+### B. Proveedores de IA de decisión (SystemOne)
+
+En **Proveedores IA** puedes guardar nombre, URL base, ruta SystemOne, modelo, idioma y autenticación (Bearer, cabecera API Key o ninguna para servidor local), ejecutar una **prueba sintética** y elegir **Usar para decisiones**. Una conexión nueva **no se activa por guardarla**.
+
+La selección se aplica a las próximas consultas de **todos los perfiles**; todavía no existe un proveedor distinto por perfil. Si no se ha seleccionado uno desde la aplicación, se utiliza la configuración del servidor. Un proveedor debe implementar el **contrato SystemOne**; una API genérica de chat no se vuelve compatible solo por proporcionar una URL. Una prueba de conexión puede consumir cuota.
+
+Los errores de autenticación, facturación, cuotas, incompatibilidad o confianza insuficiente se explican en [diagnósticos de solicitudes](docs/REQUEST_DIAGNOSTICS.md). Los fallos de IA no se deben presentar como clasificaciones aceptadas.
+
+### C. CRM y EspoCRM
+
+En **Integraciones CRM**, elige una integración (\`ESPOCRM_LOCAL\` para la demostración) y configura la operación de creación de Case. Desde el contenedor CRM Adapter, EspoCRM se alcanza habitualmente en \`http://host.docker.internal:8080\`, **no** en \`localhost:8080\`. La cuenta de API requiere permisos para los recursos que consulta o modifica.
+
+- **Mapeo dinámico:** relaciona una dimensión de Business Knowledge con un campo real del CRM, con equivalencias de valores opcionales.
+- **Equipos y responsables:** vincula \`DESTINO\` a identificadores reales de \`Team\` o \`User\`; crear equipos desde la API es una **acción administrativa explícita**, no algo que ocurra por cada correo.
+- **Compatibilidad:** consulta los metadatos disponibles y valida campos editables, enums, referencias y permisos.
+- **Vista previa:** compone el **mismo JSON** que se empleará en el envío real, **sin crear** el caso.
+- **Trazabilidad:** conserva resultado, mapeos, número de caso (cuando el CRM lo devuelve), HTTP y referencia de solicitud, sin guardar las credenciales.
+
+EspoCRM **no crea automáticamente campos personalizados de Case** desde esta plataforma. Si requieres tipologías filtrables, primero crea el campo en **Administration → Entity Manager → Case → Fields**, obtén su nombre de API y selecciónalo desde Angular. La clasificación también puede añadirse como resumen a la descripción sin modificar el esquema.
+
+[Guía de CRM](docs/CRM_CONFIGURATION_GUIDE.md) · [Mapeo y provisión](docs/CRM_MAPPING_AND_PROVISIONING.md) · [Validación](docs/CRM_MAPPING_VALIDATION.md).
+
+### D. Notificaciones
+
+En **Notificaciones**, configura canales LOG o SMTP y mensajes por perfil y evento: \`EMAIL_RECEIVED\`, \`CRM_CREATED\`, \`REVIEW_REQUIRED\` y \`CRM_ERROR\`. Puedes usar **Mailpit** sin enviar correos externos o SMTP autenticado (por ejemplo Gmail con contraseña de aplicación).
+
+La notificación de creación puede incluir el **número público del Case** (\`number\` en EspoCRM); ese número **no es** el \`requestId\` de ATR ni el ID técnico interno del CRM. Una vista previa no entrega correos. Las contraseñas SMTP nuevas se cifran utilizando \`NOTIFICATION_ENCRYPTION_KEY\`.
+
+[Guía de notificaciones](docs/NOTIFICATIONS_GUIDE.md).
+
+### E. Gmail, dashboard y pruebas de recorrido
+
+En **Buzón Gmail** conecta una cuenta de pruebas mediante OAuth, configura los filtros e inicia la sincronización. Repite la consulta: los IDs ya registrados deben contarse como omitidos, no como nuevas publicaciones. No actives el Email-to-Case nativo de EspoCRM si quieres demostrar el motor de decisiones.
+
+En **Dashboard** revisa el \`requestId\`, decisiones, regla aplicada, confianza, necesidades de revisión y estado de creación CRM. Para una primera demostración, usa un correo ficticio y verifica: ingesta → clasificación → caso en EspoCRM → notificación Mailpit → observabilidad.
+
+[Plan de pruebas E2E](docs/EMAIL_TEST_PLAN.md) · [Estados y diagnósticos](docs/REQUEST_DIAGNOSTICS.md).
+
+## Pruebas y alcance de validación
+
+\`\`\`powershell
+mvn -B -ntp test
+docker compose config --quiet
+docker compose -p agnostic-espo -f compose.espocrm.yml config --quiet
+docker compose build
+\`\`\`
+
+El repositorio cuenta con pruebas JUnit/ArchUnit y un flujo de CI que verifica Maven, Compose y la construcción de imágenes Java/Angular: [GitHub Actions](https://github.com/reyrojo2/agnostic-ticket-router/actions).
+
+**Que CI esté en verde no certifica toda la integración real:** Gmail OAuth, proveedores SystemOne, permisos de EspoCRM, SMTP externo y el comportamiento de equipos/campos requieren pruebas en cada instalación con credenciales propias. No se garantiza transacción distribuida ni entrega exactamente una vez.
+
+**Pendiente para convertirlo en SaaS comercial:** autenticación/roles y permisos operativos robustos, aislamiento de empresas (*multi-tenancy*), gestión de planes y cobros, observabilidad operacional, políticas de retención y privacidad, seguridad y respaldo de secretos, límites de consumo, migraciones y despliegue reproducible, auditoría empresarial y pruebas E2E automatizadas. Estas capacidades **no se consideran implementadas** por el mero uso de Docker o microservicios.
+
+## Documentación técnica
+
+| Documento | Contenido |
+| --- | --- |
+| [Arquitectura Java](docs/ARCHITECTURE_JAVA.md) | Capas, límites SOLID y responsabilidades de clases. |
+| [Paquetes Java](docs/PACKAGE_LAYOUT.md) | Distribución de carpetas. |
+| [Business Knowledge e IA](docs/KNOWLEDGE_AND_AI_GUIDE.md) | Configuración, conexión SystemOne y cifrado. |
+| [Configuración CRM](docs/CRM_CONFIGURATION_GUIDE.md) | Integraciones y operaciones. |
+| [Mapeo CRM y equipos](docs/CRM_MAPPING_AND_PROVISIONING.md) | Campos, equipos, IDs, vista previa y auditoría. |
+| [Notificaciones](docs/NOTIFICATIONS_GUIDE.md) | SMTP, plantillas, número público y credenciales. |
+| [Diagnósticos](docs/REQUEST_DIAGNOSTICS.md) | Explicaciones de fallos de IA y revisión. |
+| [Pruebas de correo](docs/EMAIL_TEST_PLAN.md) | Demostración Gmail/REST/RabbitMQ/CRM. |
+| [Idempotencia](docs/DECISION_IDEMPOTENCY_MIGRATION.md) | Precauciones con datos de versiones previas. |
+
+## Origen académico y derechos sobre el código
+
+Este repositorio se desarrolló como **proyecto académico** de Desarrollo de Aplicaciones Web II. La arquitectura se estudia como posible base para un producto **SaaS comercial**, pero este código no constituye todavía un servicio comercial ofrecido al público.
+
+**Estado de licencia: derechos reservados.** Este repositorio **no contiene actualmente una licencia de software libre** (MIT, Apache 2.0, GPL, etc.). La publicación de los archivos para consulta académica **no otorga por sí sola una autorización general** para redistribuir, modificar o explotar comercialmente el software; siguen siendo aplicables las condiciones de GitHub y las excepciones legales que correspondan. Para cualquier acuerdo de uso, distribución o explotación comercial se requiere autorización de los titulares de los derechos.
+
+La titularidad debe confirmarse con **todas las personas que hayan contribuido código original**, así como con las reglas académicas aplicables. Las dependencias y herramientas de terceros mantienen sus respectivas licencias. **No se ha creado todavía un archivo \`LICENSE\` propietario ni se ha modificado la visibilidad pública del repositorio.**
+
+Para una futura operación SaaS, las licencias del código fuente, las condiciones de uso del servicio alojado, la política de privacidad y los acuerdos con clientes serán documentos distintos. Antes de comercializar, conviene obtener una revisión jurídica de titularidad, dependencias y condiciones contractuales.
