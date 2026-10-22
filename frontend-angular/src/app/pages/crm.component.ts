@@ -1,10 +1,11 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
+import { CrmMappingComponent } from './crm-mapping.component';
 
 @Component({
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, CrmMappingComponent],
   template: `
     <header class="page-header"><div><p class="eyebrow">Adaptador universal</p><h1>Integraciones CRM</h1><p class="muted">1. El motor clasifica en Business Knowledge / Decision Engine. 2. Las rutas eligen el CRM. 3. La plantilla indica qué datos guardar en el caso.</p></div></header>
 
@@ -63,6 +64,8 @@ import { ApiService } from '../core/api.service';
       </section>
     </div>
 
+    <app-crm-mapping [operationId]="operationForm.id" [integrationId]="selectedIntegrationId"></app-crm-mapping>
+
     <section class="panel lower">
       <div class="panel-title"><div><h2>Rutas de integración</h2><p class="muted">Una ruta elige integración/operación según una dimensión. No crea automáticamente equipos ni campos en EspoCRM.</p></div><button class="btn btn-secondary" (click)="newRoute()">Nueva</button></div>
       <div class="table-wrap"><table><thead><tr><th>Perfil</th><th>Condición</th><th>Integración</th><th>Operación</th><th>Prioridad</th><th></th></tr></thead><tbody>
@@ -94,7 +97,7 @@ export class CrmComponent implements OnInit {
   deleteIntegration():void{if(this.integrationForm.id)this.api.deleteCrmIntegration(this.integrationForm.id).subscribe(()=>{this.newIntegration();this.reload();});}
   newOperation():void{this.operationForm=this.operationDefaults();}
   editOperation(x:any):void{this.operationForm={...x};}
-  saveOperation():void{if(!this.selectedIntegrationId)return;const c=this.operationForm.id?this.api.updateCrmOperation(this.operationForm.id,this.operationForm):this.api.createCrmOperation(this.selectedIntegrationId,this.operationForm);c.subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.newOperation();});}
+  saveOperation():void{if(!this.selectedIntegrationId)return;const c=this.operationForm.id?this.api.updateCrmOperation(this.operationForm.id,this.operationForm):this.api.createCrmOperation(this.selectedIntegrationId,this.operationForm);c.subscribe((saved:any)=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.operationForm={...saved};});}
   deleteOperation():void{if(this.operationForm.id)this.api.deleteCrmOperation(this.operationForm.id).subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.newOperation();});}
   applyEspoTemplate():void {
     if (this.operationForm.bodyTemplate && !window.confirm('¿Reemplazar el texto de la plantilla actual? Deberás pulsar Guardar operación para persistirla.')) return;

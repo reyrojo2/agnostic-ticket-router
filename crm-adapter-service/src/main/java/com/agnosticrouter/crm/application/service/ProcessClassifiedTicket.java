@@ -9,20 +9,25 @@ import com.agnosticrouter.contracts.StandardTicketEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Coordinates CRM routing and sends its business outcome through an output port. */
 @Service
 public class ProcessClassifiedTicket {
+    private static final Logger log = LoggerFactory.getLogger(ProcessClassifiedTicket.class);
+    private final CrmAuditService audit;
     private final CrmRouter router;
     private final CrmExecutionPort executor;
     private final CrmOutcomePublisher outcomes;
 
-    public ProcessClassifiedTicket(CrmRouter router, CrmExecutionPort executor, CrmOutcomePublisher outcomes) {
-        this.router=router;this.executor=executor;this.outcomes=outcomes;
+    public ProcessClassifiedTicket(CrmRouter router, CrmExecutionPort executor, CrmOutcomePublisher outcomes, CrmAuditService audit) {
+        this.router=router;this.executor=executor;this.outcomes=outcomes;this.audit=audit;
     }
 
     public void process(StandardTicketEvent ticket) {
         if (ticket.requiresHumanReview()) {
+            auditSafely(ticket, null, "REVIEW_REQUIRED", null, null);
             outcomes.publish(
                     ticket,
                     "REVIEW_REQUIRED",
@@ -32,8 +37,9 @@ public class ProcessClassifiedTicket {
             return;
         }
 
+        CrmExecutionPlan plan = null;
         try {
-            CrmExecutionPlan plan = router.resolve(ticket);
+            plan = router.resolve(ticket);
             CrmExecutionResult result = executor.execute(plan, ticket);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("integrationCode", plan.integration().getCode());
@@ -43,12 +49,14 @@ public class ProcessClassifiedTicket {
             if (result.externalId() != null) data.put("externalTicketId", result.externalId());
             if (result.error() != null) data.put("error", result.error());
 
+            auditSafely(ticket, plan, result.success() ? "CRM_CREATED" : "CRM_ERROR", result, result.error());
             if (result.success()) {
                 outcomes.publish(ticket, "CRM_CREATED", "Ticket creado correctamente en el CRM destino.", data);
             } else {
                 outcomes.publish(ticket, "CRM_ERROR", "No fue posible crear el ticket en el CRM destino.", data);
             }
         } catch (Exception ex) {
+            auditSafely(ticket, plan, "CRM_ERROR", null, ex.getClass().getSimpleName());
             outcomes.publish(
                     ticket,
                     "CRM_ERROR",
@@ -58,5 +66,9 @@ public class ProcessClassifiedTicket {
         }
     }
 
-
+    private void auditSafely(StandardTicketEvent ticket, CrmExecutionPlan plan, String outcome,
+                             CrmExecutionResult result, String error) {
+        try { audit.save(ticket, plan, outcome, result, error); }
+        catch (Exception ex) { log.warn("No se pudo persistir trazabilidad CRM ({}): {}", outcome, ex.getClass().getSimpleName()); }
+    }
 }
