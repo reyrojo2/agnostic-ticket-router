@@ -2,7 +2,7 @@
 
 ## Situacion actual
 - Implementado: ingreso REST (`POST /api/v1/intake/emails`), RabbitMQ, motor de decisiones, API CRM y notificaciones SMTP.
-- Pendiente: lectura automatica desde Gmail API, IMAP o Microsoft Graph. **Mailpit solo captura SMTP saliente; no recibe correos por IMAP**.
+- Implementado: lectura automática desde Gmail API mediante OAuth2 de solo lectura, sincronización configurable desde Angular y deduplicación por (correo, Gmail message ID) en PostgreSQL. **Mailpit solo captura SMTP saliente; no recibe correos por IMAP.**
 - No habilitar Email-to-Case nativo de EspoCRM para evaluar el router: omitiría el motor.
 
 ## Validar sin Gmail primero
@@ -13,10 +13,10 @@
 5. Enviar desde Angular → Demo de correo; anotar el `requestId`. HTTP 202 significa aceptado, no ticket creado.
 6. Consultar `docker compose logs -f mail-ingestion-service decision-engine-service crm-adapter-service notification-service`; confirmar Case en EspoCRM y correo en Mailpit.
 
-## Fase posterior: lectura de correo real
-1. Crear buzón de prueba dedicado y autenticar por OAuth 2.0 para Gmail API (o IMAP autorizado).
-2. Implementar el adaptador de entrada y convertir cada mensaje en `IncomingEmailEvent`, con metadata de identificador de mensaje.
-3. Persistir deduplicación/estado antes de marcar mensajes como tratados; reintentos, trazabilidad y revisión humana.
-4. Probar con datos sintéticos y luego validar end-to-end antes de usar información de clientes.
+## Validación de Gmail OAuth y deduplicación en ejecución real
+1. Crear buzón Gmail de prueba dedicado y autenticar con OAuth2 usando el panel Angular /gmail.
+2. Desde Angular /gmail elegir No leídos / Últimas 24 horas / Toda la bandeja y, de ser necesario, filtrar por asunto. Guardar con lectura habilitada.
+3. Pulsar Consultar ahora dos veces: la primera ejecución puede publicar mensajes nuevos; la segunda debe mostrar los IDs existentes como omitidos y 0 nuevas publicaciones. El conector NO marca los mensajes como leídos.
+4. Verificar el Case en EspoCRM y la fila (`email`, `message_id`, `request_id`) en `gmail_connector.processed`; si una publicación falla antes del registro puede ser reintentada.
 
-No se afirma que esta entrega ya lea mensajes entrantes de Gmail.
+La lectura Gmail API está implementada; su funcionamiento real requiere configurar OAuth y ejecutar la integración en tu entorno. El conector lista IDs cada vez, pero omite aquellos registrados en gmail_connector.processed.

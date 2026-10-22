@@ -54,7 +54,7 @@ const QUERIES: Record<MailboxMode,string> = {
         </div>
       </form>
     }
-    <p class="muted">Los mensajes no se marcan como leídos. Los ID procesados se registran para reducir duplicados.</p>
+    <p class="muted">Los mensajes no se marcan como leídos. El sistema consulta IDs de Gmail en cada sincronización; solo descarga y publica los que no figuran en PostgreSQL. Los correos existentes no se procesan nuevamente salvo que el registro se pierda o haya un fallo entre publicar y guardar el ID.</p>
   } @else {<p>Cargando estado del conector…</p>}
   </section>
   `
@@ -92,7 +92,7 @@ export class GmailComponent implements OnInit {
     });
   }
   sync(){this.busy.set(true);this.api.gmailSync().subscribe({
-    next:x=>{this.busy.set(false);this.info.set('Estado: '+x.status+' · Publicados: '+x.processed);this.reload();},
+    next:x=>{this.busy.set(false);this.info.set('Estado: '+x.status+' · Consultados: '+(x.listed??0)+' · Ya procesados (omitidos): '+(x.alreadyProcessed??0)+' · Nuevos publicados: '+x.processed);this.reload();},
     error:e=>{this.busy.set(false);this.error.set('Error HTTP '+e.status);}
   });}
   disconnect(){
