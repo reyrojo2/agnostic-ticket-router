@@ -17,6 +17,7 @@ import { AuthService } from './core/auth.service';
           <nav>
             <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Dashboard</a>
             <a routerLink="/knowledge" routerLinkActive="active">Business Knowledge</a>
+            <a routerLink="/ai-providers" routerLinkActive="active">Proveedores IA</a>
             <a routerLink="/crm" routerLinkActive="active">Integraciones CRM</a>
             <a routerLink="/notifications" routerLinkActive="active">Notificaciones</a>
             <a routerLink="/gmail" routerLinkActive="active">Buzón Gmail</a>

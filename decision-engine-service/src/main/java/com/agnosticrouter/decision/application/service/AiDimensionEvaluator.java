@@ -3,6 +3,7 @@ package com.agnosticrouter.decision.application.service;
 import com.agnosticrouter.decision.application.port.DecisionAiClient;
 import com.agnosticrouter.decision.domain.model.KnowledgeModels;
 import com.agnosticrouter.decision.application.model.SystemOneModels;
+import com.agnosticrouter.decision.application.model.InvalidAiResponseException;
 
 import com.agnosticrouter.contracts.DecisionValue;
 import java.util.*;
@@ -47,27 +48,27 @@ public class AiDimensionEvaluator {
                 criteria
         );
 
-        SystemOneModels.Response response = Objects.requireNonNull(
-                ai.decide(state, dimension.code(), question, dimension.autoMinProbability()),
-                "Laya no devolvió respuesta"
-        );
+        SystemOneModels.Response response = ai.decide(state, dimension.code(), question, dimension.autoMinProbability());
+        if (response == null || response.answers() == null) throw new InvalidAiResponseException();
+        SystemOneModels.Answer answer = response.answers().get(dimension.code());
+        if (answer == null) throw new InvalidAiResponseException();
 
-        SystemOneModels.Answer answer = Objects.requireNonNull(
-                response.answers().get(dimension.code()),
-                "Laya no respondió la dimensión " + dimension.code()
-        );
-
-        boolean truncated = response.usage() != null && Boolean.TRUE.equals(response.usage().truncated());
+        boolean truncated = response.usage() != null && (Boolean.TRUE.equals(response.usage().truncated())
+                || response.usage().truncatedQuestions() != null && response.usage().truncatedQuestions().contains(dimension.code()));
+        boolean lowConfidence = Boolean.TRUE.equals(answer.lowConfidence()) || answer.abstention() != null && !answer.abstention().isBlank();
+        double confidence = Optional.ofNullable(answer.answerConfidence()).orElse(Optional.ofNullable(answer.confidence()).orElse(0.0));
         String hintCodes = softHints.isEmpty()
                 ? null
                 : String.join(",", softHints.stream().map(KnowledgeModels.RuleConfig::code).toList());
 
         if ("NOUL".equals(type)) {
-            double yes = Optional.ofNullable(answer.noul()).orElse(0.0);
+            Double yesValue = answer.noul();
+            if (yesValue == null || !Double.isFinite(yesValue) || yesValue < 0 || yesValue > 1) throw new InvalidAiResponseException();
+            double yes = yesValue;
             String value = yes >= .5 ? "YES" : "NO";
             double probability = Math.max(yes, 1 - yes);
-            boolean accepted = probability >= dimension.autoMinProbability() && !truncated;
-            return new DecisionValue(
+            boolean accepted = probability >= dimension.autoMinProbability() && !truncated && !lowConfidence;
+            return explain(dimension, new DecisionValue(
                     dimension.code(),
                     value,
                     "AI",
@@ -78,14 +79,15 @@ public class AiDimensionEvaluator {
                     accepted,
                     Map.of("YES", yes, "NO", 1 - yes),
                     hintCodes
-            );
+            ), truncated, lowConfidence);
         }
 
         if ("SCORE".equals(type)) {
-            double score = Optional.ofNullable(answer.score()).orElse(0.0);
-            double probability = Optional.ofNullable(answer.answerConfidence()).orElse(0.0);
-            boolean accepted = probability >= dimension.autoMinProbability() && !truncated;
-            return new DecisionValue(
+            if (answer.score() == null || !Double.isFinite(answer.score())) throw new InvalidAiResponseException();
+            double score = answer.score();
+            double probability = confidence;
+            boolean accepted = probability >= dimension.autoMinProbability() && !truncated && !lowConfidence;
+            return explain(dimension, new DecisionValue(
                     dimension.code(),
                     Double.toString(score),
                     "AI",
@@ -96,7 +98,7 @@ public class AiDimensionEvaluator {
                     accepted,
                     Optional.ofNullable(answer.probabilities()).orElse(Map.of()),
                     hintCodes
-            );
+            ), truncated, lowConfidence);
         }
 
         Map<String, Double> probabilities = Optional.ofNullable(answer.probabilities()).orElse(Map.of());
@@ -112,19 +114,20 @@ public class AiDimensionEvaluator {
                 .filter(entry -> Objects.equals(entry.getKey(), first))
                 .map(Map.Entry::getValue)
                 .findFirst()
-                .orElse(Optional.ofNullable(answer.answerConfidence()).orElse(0.0));
+                .orElse(confidence);
 
         String second = ranking.size() > 1 ? ranking.get(1).getKey() : null;
         double secondProbability = ranking.size() > 1 ? ranking.get(1).getValue() : 0.0;
         double margin = firstProbability - secondProbability;
 
-        boolean accepted = first != null
+        boolean knownOption = first != null && options.stream().anyMatch(option -> option.code().equals(first));
+        boolean accepted = knownOption
                 && firstProbability >= dimension.autoMinProbability()
                 && margin >= dimension.minMargin()
                 && !truncated
-                && !Boolean.TRUE.equals(answer.lowConfidence());
+                && !lowConfidence;
 
-        return new DecisionValue(
+        DecisionValue value = new DecisionValue(
                 dimension.code(),
                 first,
                 "AI",
@@ -136,6 +139,21 @@ public class AiDimensionEvaluator {
                 probabilities,
                 hintCodes
         );
+        if (!knownOption) return DecisionDiagnostics.explain(dimension, value, "AI_INVALID_OPTION",
+                "La IA no seleccionó una respuesta habilitada para esta decisión.", null);
+        return explain(dimension, value, truncated, lowConfidence);
+    }
+
+    private DecisionValue explain(KnowledgeModels.DimensionConfig dimension, DecisionValue value,
+                                  boolean truncated, boolean lowConfidence) {
+        String code, message;
+        if (truncated) { code = "AI_TRUNCATED"; message = "El proveedor recortó la información y la respuesta necesita revisión."; }
+        else if (value.accepted()) { code = "AI_ACCEPTED"; message = "La respuesta IA cumple los criterios de aceptación."; }
+        else if (value.probability() < dimension.autoMinProbability()) { code = "AI_LOW_CONFIDENCE"; message = "La confianza de la respuesta no alcanza el mínimo configurado."; }
+        else if (value.margin() != null && value.margin() < dimension.minMargin()) { code = "AI_LOW_MARGIN"; message = "Las dos primeras alternativas tienen probabilidades demasiado cercanas."; }
+        else if (lowConfidence) { code = "AI_ABSTAINED"; message = "El proveedor señaló incertidumbre o se abstuvo de decidir."; }
+        else { code = "AI_INVALID_RESPONSE"; message = "La respuesta no cumple los criterios de aceptación."; }
+        return DecisionDiagnostics.explain(dimension, value, code, message, null);
     }
 
     private String criteriaText(KnowledgeModels.OptionConfig option) {

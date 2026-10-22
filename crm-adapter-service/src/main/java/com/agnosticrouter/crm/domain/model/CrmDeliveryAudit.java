@@ -24,6 +24,8 @@ public class CrmDeliveryAudit {
     private String outcome;
     @Column(name = "external_id", length = 150)
     private String externalId;
+    @Column(name = "external_number", length = 150)
+    private String externalNumber;
     @Column(name = "http_status")
     private Integer httpStatus;
     private Integer attempts;

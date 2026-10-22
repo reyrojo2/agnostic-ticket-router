@@ -1,0 +1,12 @@
+.detail-line { display: block; margin-top: 5px; }
+.reason-cell { min-width: 240px; max-width: 440px; line-height: 1.5; }
+.issue-list { padding-left: 22px; }
+.issue-list li { margin-bottom: 20px; }
+.issue-list p { margin: 6px 0; line-height: 1.5; }
+.trace-metadata { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; font-size: 13px; }
+.trace-metadata dd { margin: 0; overflow-wrap: anywhere; }
+.trace-metadata dt { color: #64748b; }
+.notice { overflow-wrap: anywhere; }
+.stat-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.request-detail:focus { outline: 2px solid #93c5fd; outline-offset: 3px; }
+@media (max-width: 720px) { .trace-metadata { grid-template-columns: 1fr; } }

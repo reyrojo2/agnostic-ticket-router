@@ -35,6 +35,8 @@ public class NotificationDispatcher {
     }
 
     public void dispatch(String profileCode, String eventType, Object context) {
+        // A deliberately disabled profile message overrides the general fallback too.
+        if (templates.existsByProfileCodeAndEventTypeAndActiveFalse(profileCode,eventType)) return;
         NotificationTemplate template = templates
                 .findFirstByProfileCodeAndEventTypeAndActiveTrue(profileCode, eventType)
                 .or(() -> templates.findFirstByProfileCodeAndEventTypeAndActiveTrue("*", eventType))

@@ -29,6 +29,7 @@ public class CrmAuditService {
         audit.setOperationCode(plan == null ? null : shortValue(plan.operation().getCode(), 80));
         audit.setOutcome(outcome);
         audit.setExternalId(result == null ? null : shortValue(result.externalId(), 150));
+        audit.setExternalNumber(result == null ? null : shortValue(result.externalNumber(), 150));
         audit.setHttpStatus(result == null ? null : result.statusCode());
         audit.setAttempts(result == null ? null : result.attempts());
         // No raw message content: only dimension code -> selected option code.

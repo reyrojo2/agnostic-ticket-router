@@ -1,0 +1,37 @@
+<header class="page-header"><div><p class="eyebrow">Indicadores operativos</p><h1>Procesamiento de solicitudes</h1>
+  <p class="muted">Últimos 7 días · Horas de {{metrics()?.timezone || 'America/Lima'}}</p></div>
+  <button type="button" class="btn btn-secondary" [disabled]="loading()" (click)="load()">{{loading() ? 'Actualizando…' : 'Actualizar'}}</button>
+</header>
+@if (error()) { <p class="alert error" role="alert">{{error()}}</p> }
+@if (metrics(); as m) {
+  <div class="stat-grid">
+    <article class="stat"><span>Recibidos hoy</span><strong>{{m.todayReceived}}</strong><small>{{m.received}} en los últimos 7 días</small></article>
+    <article class="stat"><span>Solo reglas</span><strong>{{m.ruleOnly}}</strong><small>Todas las decisiones resueltas por reglas</small></article>
+    <article class="stat"><span>Con respuestas IA</span><strong>{{m.aiUsed}}</strong><small>{{m.aiDimensions}} decisiones con respuesta IA</small></article>
+    <article class="stat"><span>Confianza insuficiente</span><strong>{{m.lowConfidence}}</strong><small>La IA respondió con incertidumbre</small></article>
+    <article class="stat"><span>Sin respuesta IA</span><strong>{{m.aiUnavailable}}</strong><small>Fallo de conexión, configuración o proveedor</small></article>
+    <article class="stat"><span>Casos creados</span><strong>{{m.crmCreated}}</strong><small>Confirmados por el CRM</small></article>
+    <article class="stat"><span>Revisión humana</span><strong>{{m.review}}</strong><small>Detenidas antes de enviar al CRM</small></article>
+    <article class="stat"><span>Errores CRM</span><strong>{{m.crmError}}</strong><small>Falló el envío al CRM</small></article>
+    <article class="stat"><span>Pendientes</span><strong>{{m.pending}}</strong><small>Esperando el siguiente paso</small></article>
+  </div>
+  <section class="panel"><h2>Volumen diario</h2>
+    <div class="table-wrap"><table><thead><tr><th>Día</th><th>Recibidos</th><th>Creados</th><th>Revisión</th><th>Errores</th></tr></thead>
+    <tbody>@for (day of m.daily; track day.day) { <tr><td>{{day.day}}</td><td>{{day.received}}</td><td>{{day.created}}</td><td>{{day.review}}</td><td>{{day.errors}}</td></tr> }</tbody></table></div>
+  </section>
+  <section class="panel lower"><h2>Solicitudes recientes</h2><p class="muted">Abre el detalle para ver qué se resolvió, qué bloqueó el envío y dónde revisarlo.</p>
+    <div class="table-wrap"><table><thead><tr><th>Hora local</th><th>Solicitud</th><th>Origen</th><th>Estado</th><th>Motivo o resultado</th><th>Detalle</th></tr></thead>
+    <tbody>@for (trace of m.recent; track trace.requestId) {
+      <tr><td>{{date(trace.at)}}</td><td class="mono" [title]="trace.requestId">{{trace.requestId | slice:0:8}}</td><td>{{trace.source === 'gmail' ? 'Gmail' : trace.source}}</td>
+        <td>{{stateLabel(trace.state)}}</td><td class="reason-cell">{{trace.summary}}</td>
+        <td><button type="button" class="btn btn-secondary" (click)="showDetails(trace)" [attr.aria-label]="'Ver detalle de solicitud ' + trace.requestId" aria-controls="request-detail" [attr.aria-expanded]="selectedId() === trace.requestId">Ver detalle</button></td>
+      </tr>
+    } @empty { <tr><td colspan="6">No se han registrado solicitudes en los últimos 7 días.</td></tr> }</tbody></table></div>
+  </section>
+  @if (selected(); as trace) {
+    <section class="panel lower request-detail" id="request-detail" #requestDetail tabindex="-1" aria-label="Detalle de la solicitud seleccionada">
+      <div class="actions"><button type="button" class="link" (click)="selectedId.set(null)">Cerrar detalle</button></div>
+      <app-request-detail [trace]="trace" />
+    </section>
+  }
+} @else if (loading()) { <section class="panel" role="status">Consultando solicitudes…</section> }

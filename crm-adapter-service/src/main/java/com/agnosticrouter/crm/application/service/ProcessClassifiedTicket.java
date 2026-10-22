@@ -47,6 +47,10 @@ public class ProcessClassifiedTicket {
             data.put("httpStatus", result.statusCode());
             data.put("attempts", result.attempts());
             if (result.externalId() != null) data.put("externalTicketId", result.externalId());
+            if (result.externalNumber() != null) data.put("externalTicketNumber", result.externalNumber());
+            boolean numberExpected=plan.operation().getExternalNumberPath()!=null&&!plan.operation().getExternalNumberPath().isBlank();
+            String reference=numberExpected?result.externalNumber():result.ticketReference();
+            data.put("ticketReference", reference == null ? "" : reference);
             if (result.error() != null) data.put("error", result.error());
 
             auditSafely(ticket, plan, result.success() ? "CRM_CREATED" : "CRM_ERROR", result, result.error());

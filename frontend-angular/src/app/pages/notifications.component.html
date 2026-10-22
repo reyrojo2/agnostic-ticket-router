@@ -1,0 +1,34 @@
+<header class="page-header"><div><p class="eyebrow">Comunicación con el cliente</p><h1>Notificaciones</h1><p class="muted">Elige cuándo avisar al cliente y qué mensaje recibirá. La confirmación utiliza la referencia real del CRM.</p></div><button type="button" class="btn btn-secondary" [disabled]="busy() || loading()" (click)="load()">Actualizar</button></header>
+@if (error()) { <p class="alert error" role="alert">{{error()}}</p> }
+@if (info()) { <p class="notice success" role="status">{{info()}}</p> }
+@if (loading()) { <p role="status">Cargando notificaciones…</p> }
+<nav class="workflow-nav" aria-label="Configuración de notificaciones"><button type="button" [class.current]="step() === 'messages'" [disabled]="busy() || loading()" (click)="step.set('messages')">Mensajes al cliente</button><button type="button" [class.current]="step() === 'channels'" [disabled]="busy() || loading()" (click)="step.set('channels')">Canales de envío</button></nav>
+@if (!loading() && step() === 'messages') {
+  <section class="panel workflow-context"><div class="form-grid"><label>Proceso que quieres configurar<select name="notificationScope" [(ngModel)]="profileCode" (ngModelChange)="selectProfile()" [disabled]="busy()"><option value="*">Todos los perfiles · mensajes generales</option>@for (profile of profiles(); track profile.id) { <option [value]="profile.code">{{profile.name}}{{profile.active ? '' : ' (deshabilitado)'}}</option> }</select></label></div><p class="hint muted">Un mensaje específico de un perfil sustituye al mensaje general del mismo momento. Guardar no reenvía correos anteriores.</p></section>
+  @if (!channels().length) { <p class="notice">Añade un canal en Canales de envío antes de habilitar mensajes.</p> }
+  <div class="message-events">
+    @for (event of events(); track event.code) {
+      @let message = eventTemplate(event.code); @let inherited = fallback(event.code);
+      <article class="panel"><div class="panel-title"><h2>{{event.label}}</h2><span class="badge" [class.off]="!(message || inherited)?.active">{{message ? message.active ? 'Habilitado' : 'Deshabilitado' : inherited ? 'Mensaje general' : 'Sin configurar'}}</span></div><p class="muted">{{event.description}}</p>
+        @if (message || inherited; as configured) { <p>Canal: <strong>{{channelName(configured.channelCode)}}</strong></p> }
+        <button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="editMessage(event)">{{message ? 'Editar mensaje' : inherited ? 'Personalizar para este perfil' : 'Configurar mensaje'}}</button>
+      </article>
+    }
+  </div>
+  @if (templateDraft; as draft) {
+    <section class="panel lower"><app-notification-template-editor [model]="draft" [channels]="channels()" [events]="events()" [busy]="busy()" [previewBusy]="previewBusy()" (save)="saveMessage($event)" (preview)="loadPreview($event)" (changed)="clearPreview()" (cancel)="closeMessage()" />
+      @if (draft.id) { <details class="advanced lower"><summary>Eliminar este mensaje</summary><p>Si existe un mensaje general para este momento, volverá a utilizarse.</p><button type="button" class="btn btn-danger" [disabled]="busy()" (click)="deleteMessage()">Eliminar mensaje</button></details> }
+    </section>
+  }
+  @if (previewBusy()) { <p role="status">Preparando vista previa…</p> }
+  @if (preview(); as message) { <section class="panel lower" aria-label="Vista previa del mensaje"><h2>Así lo verá el cliente</h2><p class="notice">Ejemplo con datos ficticios. El número 12345 se sustituirá por el que devuelva el CRM. Esta vista previa no envía correos.</p><p><strong>Para:</strong> {{message.recipient}}</p><p><strong>Asunto:</strong> {{message.subject}}</p><div class="email-preview">{{message.body}}</div></section> }
+}
+@if (!loading() && step() === 'channels') {
+  <section class="panel"><div class="panel-title"><h2>Canales de envío</h2><button type="button" class="btn btn-primary" [disabled]="busy()" (click)="newChannel()">Añadir canal</button></div><p class="muted">Configura una cuenta una vez y selecciónala en los mensajes que quieras enviar.</p>
+    <div class="table-wrap"><table><thead><tr><th>Canal</th><th>Entrega</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+      @for (channel of channels(); track channel.id) { <tr><td><strong>{{channel.name}}</strong></td><td>{{channel.type === 'SMTP' ? 'Correo desde ' + channel.fromAddress : 'Registro de desarrollo · no envía correo'}}</td><td>{{channel.active ? 'Habilitado' : 'Deshabilitado'}}</td><td><div class="actions"><button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="editChannel(channel)">Editar canal</button><button type="button" class="link" [disabled]="busy()" (click)="deleteChannel(channel)">Eliminar</button></div></td></tr> }
+      @empty { <tr><td colspan="4">Todavía no hay canales. Puedes preparar el correo local de pruebas con un botón.</td></tr> }
+    </tbody></table></div>
+  </section>
+  @if (channelDraft; as draft) { <section class="panel lower"><app-notification-channel-editor [model]="draft" [channels]="channels()" [busy]="busy()" [credentialStorageAvailable]="credentialStorageAvailable" (save)="saveChannel($event)" (cancel)="channelDraft=null" /></section> }
+}

@@ -103,6 +103,7 @@ public class CrmAdminService {
         operation.setBodyTemplate(request.bodyTemplate());
         operation.setSuccessStatusCodes(request.successStatusCodes());
         operation.setExternalIdPath(request.externalIdPath());
+        operation.setExternalNumberPath(request.externalNumberPath());
         operation.setTimeoutMs(request.timeoutMs());
         operation.setMaxAttempts(request.maxAttempts());
         operation.setRetryDelayMs(request.retryDelayMs());
@@ -147,6 +148,7 @@ public class CrmAdminService {
             String bodyTemplate,
             String successStatusCodes,
             String externalIdPath,
+            String externalNumberPath,
             Integer timeoutMs,
             Integer maxAttempts,
             Long retryDelayMs,

@@ -38,6 +38,11 @@ public class RequestTraceRepository implements RequestTraceReader {
             compact.put("source",decision.source());
             compact.put("accepted",decision.accepted());
             compact.put("confidence",decision.probability());
+            compact.put("margin",decision.margin());
+            compact.put("secondOption",decision.secondOption());
+            compact.put("secondConfidence",decision.secondProbability());
+            compact.put("matchedRule",decision.matchedRule());
+            compact.put("diagnostic",decision.diagnostic());
             values.put(entry.getKey(),compact);
             if("RULE".equals(decision.source()))rules++;
             if("AI".equals(decision.source()))ai++;
@@ -65,18 +70,30 @@ public class RequestTraceRepository implements RequestTraceReader {
         Object id=event.data()==null?null:event.data().get("externalTicketId");
         String external=id==null?null:id.toString();
         if(external!=null && external.length()>120)external=external.substring(0,120);
+        Object rawNumber=event.data()==null?null:event.data().get("externalTicketNumber");
+        String externalNumber=rawNumber==null?null:rawNumber.toString();
+        if(externalNumber!=null && externalNumber.length()>150)externalNumber=externalNumber.substring(0,150);
+        // Event error bodies may echo credentials. Keep only the public outcome and numeric HTTP status.
+        String message = switch (event.type()) {
+            case "CRM_CREATED" -> "El CRM confirmó la creación del caso.";
+            case "CRM_ERROR" -> "El adaptador no pudo completar el envío al CRM. Revisa la integración y su historial.";
+            default -> "La solicitud se detuvo antes de enviarse al CRM porque requiere revisión.";
+        };
+        Object rawStatus = event.data() == null ? null : event.data().get("httpStatus");
+        Integer status = rawStatus instanceof Number number && number.intValue() >= 100 && number.intValue() <= 599 ? number.intValue() : null;
         jdbc.update("""
-          INSERT INTO observability.request_trace(request_id,profile_code,state,crm_at,crm_external_id,requires_review)
-          VALUES (?,?,?,now(),?,?)
+          INSERT INTO observability.request_trace(request_id,profile_code,state,crm_at,crm_external_id,requires_review,outcome_message,crm_http_status,crm_external_number)
+          VALUES (?,?,?,now(),?,?,?,?,?)
           ON CONFLICT(request_id) DO UPDATE SET
             state=EXCLUDED.state,crm_at=EXCLUDED.crm_at,crm_external_id=EXCLUDED.crm_external_id,
-            requires_review=observability.request_trace.requires_review OR EXCLUDED.requires_review
-          """,event.requestId(),event.profileCode(),event.type(),external,"REVIEW_REQUIRED".equals(event.type()));
+            requires_review=observability.request_trace.requires_review OR EXCLUDED.requires_review,
+            outcome_message=EXCLUDED.outcome_message,crm_http_status=EXCLUDED.crm_http_status,crm_external_number=EXCLUDED.crm_external_number
+          """,event.requestId(),event.profileCode(),event.type(),external,"REVIEW_REQUIRED".equals(event.type()),message,status,externalNumber);
     }
     public List<Map<String,Object>> recent(LocalDate start, String timezone){
         return jdbc.query("""
             SELECT request_id, received_at, profile_code, source, state, deterministic_count,
-                   ai_count,rejected_count,requires_review,crm_external_id,decisions
+                   ai_count,rejected_count,requires_review,crm_external_id,decisions,outcome_message,crm_http_status,crm_external_number
             FROM observability.request_trace
             WHERE (received_at AT TIME ZONE ?)::date >= ?
             ORDER BY received_at DESC
@@ -92,6 +109,9 @@ public class RequestTraceRepository implements RequestTraceReader {
                 value.put("rejected",rs.getInt("rejected_count"));
                 value.put("review",rs.getBoolean("requires_review"));
                 value.put("externalId",rs.getString("crm_external_id"));
+                value.put("externalNumber",rs.getString("crm_external_number"));
+                value.put("outcomeMessage",rs.getString("outcome_message"));
+                value.put("crmHttpStatus",rs.getObject("crm_http_status",Integer.class));
                 try{value.put("decisions",mapper.readValue(rs.getString("decisions"),Map.class));}
                 catch(JsonProcessingException ex){throw new IllegalStateException("Invalid stored JSON",ex);}
                 return value;

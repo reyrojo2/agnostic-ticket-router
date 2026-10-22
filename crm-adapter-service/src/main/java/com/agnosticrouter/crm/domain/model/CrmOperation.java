@@ -45,6 +45,9 @@ public class CrmOperation {
     @Column(name = "external_id_path", length = 500)
     private String externalIdPath;
 
+    @Column(name = "external_number_path", length = 500)
+    private String externalNumberPath;
+
     @Column(name = "timeout_ms", nullable = false)
     private Integer timeoutMs = 15000;
 

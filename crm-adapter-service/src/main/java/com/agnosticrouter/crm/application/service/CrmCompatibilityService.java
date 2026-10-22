@@ -52,12 +52,23 @@ public class CrmCompatibilityService {
                 errors.add("Campo de solo lectura o no persistente: " + key);
             }
         }
-        for (CrmAssignmentMapping mapping : assignments.findByOperationIdOrderByIdAsc(operationId)) {
-            if (!mapping.isActive()) continue;
+        List<CrmAssignmentMapping> activeAssignments = assignments.findByOperationIdOrderByIdAsc(operationId).stream()
+                .filter(CrmAssignmentMapping::isActive).toList();
+        CrmCatalogPort.AssignmentAccess access = activeAssignments.isEmpty() ? null : catalog.assignmentAccess(integration);
+        if (access != null && "no".equalsIgnoreCase(access.permission())) {
+            errors.add("La cuenta API «" + access.userName() + "» no tiene permiso de asignación en EspoCRM. En su rol, habilita Asignación para sus equipos.");
+        }
+        for (CrmAssignmentMapping mapping : activeAssignments) {
             String kind = mapping.getAssignmentKind();
             if (!"TEAM".equals(kind) && !"USER".equals(kind)) { errors.add("Tipo de asignación inválido: " + kind); continue; }
             if (!catalog.recordExists(integration, "TEAM".equals(kind) ? "Team" : "User", mapping.getExternalId())) {
                 errors.add("No existe en EspoCRM " + kind + " con ID " + mapping.getExternalId());
+            }
+            if (access != null && "TEAM".equals(kind) && "team".equalsIgnoreCase(access.permission())
+                    && !access.teamIds().contains(mapping.getExternalId())) {
+                errors.add("La cuenta API «" + access.userName() + "» no pertenece al equipo «"
+                        + (mapping.getExternalName() == null ? mapping.getExternalId() : mapping.getExternalName())
+                        + "». Añádela al equipo en EspoCRM o ajusta su permiso de asignación.");
             }
         }
         if (fields.findByOperationIdOrderByIdAsc(operationId).isEmpty()) {

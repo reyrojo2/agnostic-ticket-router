@@ -1,6 +1,7 @@
 package com.agnosticrouter.notification.domain.model;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -43,6 +44,20 @@ public class NotificationChannel {
 
     @Column(name = "start_tls", nullable = false)
     private Boolean startTls = true;
+
+    @Column(name = "ssl_enabled", nullable = false)
+    private Boolean sslEnabled = false;
+
+    @JsonIgnore
+    @Column(name = "encrypted_username", columnDefinition = "TEXT")
+    private String encryptedUsername;
+
+    @JsonIgnore
+    @Column(name = "encrypted_password", columnDefinition = "TEXT")
+    private String encryptedPassword;
+
+    public boolean isUsernameConfigured() { return encryptedUsername != null || usernameRef != null && !usernameRef.isBlank(); }
+    public boolean isPasswordConfigured() { return encryptedPassword != null || passwordRef != null && !passwordRef.isBlank(); }
 
     @Column(nullable = false)
     private Boolean active = true;

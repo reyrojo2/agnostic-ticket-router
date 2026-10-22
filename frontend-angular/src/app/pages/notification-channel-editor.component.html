@@ -1,0 +1,26 @@
+<h2>{{form.id ? 'Editar canal de envío' : 'Añadir canal de envío'}}</h2>
+@if (!form.id) { <p><button type="button" class="btn btn-secondary" [disabled]="busy" (click)="useLocal()">Usar correo de pruebas local (Mailpit)</button></p> }
+<form (ngSubmit)="submit()"><fieldset class="form-grid" [disabled]="busy">
+  <label>Nombre del canal<input name="channelName" [(ngModel)]="form.name" (ngModelChange)="nameChanged()" placeholder="Correo de atención al cliente" required maxlength="160"></label>
+  <label>Cómo se envía<select name="channelType" [(ngModel)]="form.type"><option value="SMTP">Correo electrónico</option><option value="LOG">Solo registro de desarrollo</option></select></label>
+  @if (form.type === 'SMTP') {
+    <label>Servidor de correo<input name="smtpHost" [(ngModel)]="form.host" placeholder="smtp.ejemplo.com" required></label>
+    <label>Correo que verá el cliente como remitente<input name="smtpFrom" type="email" [(ngModel)]="form.fromAddress" required></label>
+    <label>Seguridad de la conexión<select name="smtpTransport" [(ngModel)]="transport" (ngModelChange)="setTransport()"><option value="STARTTLS">STARTTLS (habitual en puerto 587)</option><option value="SSL">TLS directo (habitual en puerto 465)</option><option value="NONE">Sin cifrado (pruebas locales)</option></select></label>
+    <label>Puerto<input name="smtpPort" type="number" min="1" max="65535" [(ngModel)]="form.port" required></label>
+    <label class="check span-2"><input name="smtpAuth" type="checkbox" [(ngModel)]="form.smtpAuth"> El servidor requiere usuario y contraseña</label>
+    @if (form.smtpAuth) {
+      @if (!credentialStorageAvailable) { <p class="notice span-2">El administrador debe habilitar el cifrado del servidor para guardar credenciales nuevas. Las credenciales ya configuradas en el servidor siguen disponibles.</p> }
+      <label>Usuario de correo<input name="smtpUsername" type="password" [(ngModel)]="form.username" autocomplete="new-password" [placeholder]="form.usernameConfigured ? 'Usuario guardado; vacío lo conserva' : 'Usuario de tu proveedor SMTP'"><small>Se guarda cifrado. Al editar no se muestra.</small></label>
+      <label>Contraseña o contraseña de aplicación<input name="smtpPassword" type="password" [(ngModel)]="form.password" autocomplete="new-password" [placeholder]="form.passwordConfigured ? 'Contraseña guardada; vacío la conserva' : 'Contraseña de tu proveedor SMTP'"><small>Vacío conserva la contraseña existente.</small></label>
+    }
+  } @else { <p class="notice span-2">Este canal escribe mensajes en el registro del servicio. No envía correos al cliente.</p> }
+  <label class="check span-2"><input name="channelActive" type="checkbox" [(ngModel)]="form.active"> Canal habilitado</label>
+  <details class="advanced span-2"><summary>Opciones avanzadas del canal</summary><div class="form-grid">
+    <label>Identificador estable<input name="channelCode" [(ngModel)]="form.code" [readonly]="!!form.id" required></label>
+    <label>Referencia de usuario del servidor<input name="smtpUsernameRef" [(ngModel)]="form.usernameRef" placeholder="ENV:SMTP_USER"></label>
+    <label>Referencia de contraseña del servidor<input name="smtpPasswordRef" [(ngModel)]="form.passwordRef" placeholder="ENV:SMTP_PASSWORD"></label>
+    @if (form.usernameConfigured || form.passwordConfigured) { <label class="check"><input name="smtpRemoveCredentials" type="checkbox" [(ngModel)]="form.removeCredentials"> Eliminar credenciales guardadas al guardar</label> }
+  </div><p class="hint muted">Las referencias permiten reutilizar credenciales gestionadas por el administrador. Para configurar una cuenta desde esta pantalla, usa los campos de usuario y contraseña.</p></details>
+  <div class="actions span-2"><button class="btn btn-primary">Guardar canal</button><button type="button" class="btn btn-secondary" (click)="cancel.emit()">Cancelar</button></div>
+</fieldset></form>

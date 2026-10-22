@@ -1,0 +1,39 @@
+<div class="panel-title"><h2>Detalle de la solicitud</h2><span class="badge" [class.off]="trace.state !== 'CRM_CREATED'">{{stateLabel(trace.state)}}</span></div>
+<p class="notice" [class.success]="trace.state === 'CRM_CREATED'">{{trace.summary}}</p>
+<div class="flow lower" aria-label="Etapas del procesamiento">
+  <span>1. Correo recibido</span><b aria-hidden="true">→</b>
+  <span>2. {{decisions.length ? 'Decisiones evaluadas' : 'Esperando evaluación'}}</span><b aria-hidden="true">→</b>
+  <span>3. {{trace.state === 'CRM_CREATED' ? 'Caso confirmado en CRM' : trace.state === 'CRM_ERROR' ? 'Envío CRM fallido' : trace.state === 'REVIEW_REQUIRED' ? 'Detenida para revisión · sin envío al CRM' : 'Envío CRM pendiente'}}</span>
+</div>
+@if (trace.issues.length) {
+  <h3>Qué necesita atención</h3><ul class="issue-list">
+  @for (issue of trace.issues; track issue.dimensionCode) {
+    <li><strong>{{readable(issue.dimensionName)}}</strong>@if (issue.required === true) { <span class="muted"> · Necesaria para el envío automático</span> }@else if (issue.required === false) { <span class="muted"> · Opcional</span> }
+      <p>{{issue.message}} @if (issue.providerStatus) { <span class="mono">HTTP {{issue.providerStatus}}</span> }</p>
+      @if (issue.action === 'AI') { <a routerLink="/ai-providers">Revisar proveedor IA y probar conexión</a> }
+      @else { <a routerLink="/knowledge">Revisar decisiones y respuestas del negocio</a> }
+    </li>
+  }
+  </ul>
+}
+@if (trace.state === 'CRM_ERROR') { <p class="notice">{{trace.outcomeMessage || 'El adaptador no pudo completar el envío al CRM.'}} @if (trace.crmHttpStatus) { HTTP {{trace.crmHttpStatus}}. } <a routerLink="/crm">Revisar integración e historial CRM</a></p> }
+<h3>Resultado de cada decisión</h3>
+<div class="table-wrap"><table><thead><tr><th>Decisión y resultado</th><th>Cómo se resolvió</th><th>Confianza y criterios</th><th>Explicación</th></tr></thead><tbody>
+  @for (decision of decisions; track decision.code) {
+    <tr><td><strong>{{decision.diagnostic?.dimensionName || readable(decision.code)}}</strong><span class="detail-line">{{valueLabel(decision)}}</span></td>
+      <td>{{sourceLabel(decision.source)}}<span class="detail-line" [class.warning]="!decision.accepted">{{decision.accepted ? 'Aceptada' : 'Necesita atención'}}</span></td>
+      <td>@if (decision.source === 'UNAVAILABLE') { Sin respuesta para medir confianza } @else {
+        <span class="detail-line">Confianza: {{decision.confidence | percent:'1.0-1'}}</span>
+        @if (decision.diagnostic && decision.source === 'AI') {
+          <span class="detail-line muted">Mínima: {{decision.diagnostic.minimumConfidence | percent:'1.0-1'}}</span>
+          @if (decision.diagnostic.minimumMargin !== null && decision.margin != null) { <span class="detail-line muted">Diferencia: {{decision.margin | percent:'1.0-1'}} · mínima {{decision.diagnostic.minimumMargin | percent:'1.0-1'}}</span> }
+        }
+      }</td><td class="reason-cell">{{message(decision)}}
+        @if (decision.diagnostic?.providerStatus) { <span class="detail-line mono">HTTP {{decision.diagnostic.providerStatus}}</span> }
+        @if (decision.matchedRule) { <small class="detail-line muted">Regla aplicada: {{decision.matchedRule}}</small> }
+      </td></tr>
+  } @empty { <tr><td colspan="4">Todavía no se han registrado decisiones para esta solicitud.</td></tr> }
+</tbody></table></div>
+@if (trace.externalNumber) { <p><strong>Número de caso para el cliente:</strong> <span class="mono">{{trace.externalNumber}}</span></p> }
+@else if (trace.externalId) { <p class="muted">El CRM confirmó el registro. Esta solicitud no conserva un número de caso para el cliente.</p> }
+<details class="advanced"><summary>Datos de seguimiento</summary><dl class="trace-metadata"><dt>Identificador de solicitud</dt><dd class="mono">{{trace.requestId}}</dd><dt>Perfil utilizado</dt><dd>{{trace.profile}}</dd><dt>Origen</dt><dd>{{trace.source}}</dd></dl><p class="hint muted">Los detalles reflejan lo registrado al procesar el correo. Cambiar la configuración no vuelve a procesar solicitudes anteriores.</p></details>

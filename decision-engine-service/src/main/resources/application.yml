@@ -20,6 +20,11 @@ spring:
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
 app:
+  security:
+    jwt-secret: ${APP_JWT_SECRET}
+    cors-origin: ${CORS_ORIGIN:http://localhost:4200}
+  ai-config:
+    encryption-key: ${AI_CONFIG_ENCRYPTION_KEY:}
   knowledge:
     base-url: ${KNOWLEDGE_BASE_URL:http://localhost:8082}
   ai:

@@ -15,3 +15,6 @@ CREATE TABLE IF NOT EXISTS observability.request_trace (
  crm_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS ix_trace_received ON observability.request_trace(received_at DESC);
+ALTER TABLE observability.request_trace ADD COLUMN IF NOT EXISTS outcome_message VARCHAR(500);
+ALTER TABLE observability.request_trace ADD COLUMN IF NOT EXISTS crm_http_status INTEGER;
+ALTER TABLE observability.request_trace ADD COLUMN IF NOT EXISTS crm_external_number VARCHAR(150);

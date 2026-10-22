@@ -1,0 +1,157 @@
+@if (error()) { <p class="alert error" role="alert">{{error()}}</p> }
+@if (info()) { <p class="notice success" role="status">{{info()}}</p> }
+@if (loading()) { <p role="status" class="muted">Cargando los vínculos guardados…</p> }
+@if (section !== 'history' && !operationId) {
+  <div class="empty">Selecciona una conexión y una acción en el primer paso.</div>
+} @else {
+  @if (section === 'fields') {
+    <section class="panel">
+      <div class="panel-title"><div><h2>¿Dónde guardar cada dato?</h2><p class="muted">Elige una dimensión de tu perfil y el campo que debe rellenar en el CRM.</p></div>
+        <button type="button" class="btn btn-secondary" [disabled]="catalogLoading() || busy()" (click)="loadCatalog()">Actualizar campos</button>
+      </div>
+      @if (catalogLoading()) { <p role="status">Consultando campos del CRM…</p> }
+      @if (catalogError()) { <p class="alert error" role="alert">{{catalogError()}}</p> }
+      <div class="table-wrap"><table><thead><tr><th>Dato del perfil</th><th>Guardar en</th><th>Estado</th><th></th></tr></thead><tbody>
+        @for (field of fields(); track field.id) {
+          <tr><td>{{knowledge.dimensionName(field.dimensionCode)}}</td><td>{{fieldName(field.targetField)}}</td><td>{{field.active ? (fieldProblems(field).length ? 'Revisar equivalencias' : 'Activo') : 'Inactivo'}}</td>
+            <td class="row-actions"><button type="button" class="link" [disabled]="busy()" (click)="editField(field)">Editar</button><button type="button" class="link" [disabled]="busy()" (click)="deleteField(field)">Quitar</button></td></tr>
+        } @empty { <tr><td colspan="4">Aún no hay campos vinculados. El título y la descripción se envían con la plantilla de la conexión.</td></tr> }
+      </tbody></table></div>
+      <form (ngSubmit)="saveField()">
+        <fieldset [disabled]="busy() || loading() || knowledge.loading()" class="form-grid">
+          <label>Dato que ya configuraste<select name="fieldDimension" [(ngModel)]="fieldForm.dimensionCode" required>
+            <option value="">Selecciona una dimensión…</option>
+            @if (fieldForm.dimensionCode && !hasDimension(fieldForm.dimensionCode)) { <option [value]="fieldForm.dimensionCode">{{fieldForm.dimensionCode}} (guardada en otro perfil)</option> }
+            @for (d of knowledge.dimensions(); track d.id) { <option [value]="d.code">{{d.name}}{{d.active ? '' : ' (inactiva)'}}</option> }
+          </select></label>
+          <label>Campo del CRM<select name="targetField" [(ngModel)]="fieldForm.targetField" required>
+            <option value="">Selecciona dónde guardarlo…</option>
+            @if (fieldForm.targetField && !availableFields().includes(fieldForm.targetField)) { <option [value]="fieldForm.targetField">{{fieldName(fieldForm.targetField)}} (sin catálogo)</option> }
+            @for (field of availableFields(); track field) { <option [value]="field">{{fieldName(field)}}</option> }
+          </select></label>
+          @if (fieldForm.dimensionCode && fieldForm.targetField && knowledge.choices(fieldForm.dimensionCode).length) {
+            <div class="span-2">
+              <h3>Equivalencias de valores</h3>
+              <p class="muted">Las opciones de tu dimensión ya están cargadas. Elige su equivalente cuando el CRM utilice otros valores.</p>
+              <div class="table-wrap"><table class="choice-table"><thead><tr><th>Opción de tu perfil</th><th>Valor en {{fieldName(fieldForm.targetField)}}</th></tr></thead><tbody>
+                @for (o of knowledge.choices(fieldForm.dimensionCode); track o.id) {
+                  <tr><td>{{o.name}}{{o.active ? '' : ' (inactiva)'}}</td><td>
+                    @if (targetOptions().length) {
+                      <select [attr.aria-label]="'Equivalente de ' + o.name" [name]="'value-' + o.id" [ngModel]="equivalence(o.code)" (ngModelChange)="setEquivalence(o.code,$event)">
+                        <option [ngValue]="null">{{originalAllowed(o.code) ? 'Conservar el valor original' : 'Elegir equivalente…'}}</option>
+                        @if (hasEquivalence(o.code) && !targetOptions().includes(equivalence(o.code))) { <option [ngValue]="equivalence(o.code)">{{equivalence(o.code)}} (valor guardado no disponible)</option> }
+                        @for (value of targetOptions(); track value) { <option [ngValue]="value">{{value}}</option> }
+                      </select>
+                      @if (!hasEquivalence(o.code) && !originalAllowed(o.code)) { <small class="warning">El código original no coincide con las opciones de este campo.</small> }
+                    } @else {
+                      <input [attr.aria-label]="'Equivalente de ' + o.name" [name]="'value-' + o.id" [placeholder]="'Conservar ' + o.name" [ngModel]="equivalence(o.code)" (ngModelChange)="setEquivalence(o.code,$event === '' ? null : $event)">
+                    }
+                  </td></tr>
+                }
+              </tbody></table></div>
+            </div>
+          }
+          <details class="advanced span-2"><summary>Opciones avanzadas del vínculo</summary><div class="form-grid">
+            <label>Nombre técnico del campo<input name="technicalField" [(ngModel)]="fieldForm.targetField"></label>
+            <label class="check"><input name="fieldRequired" type="checkbox" [(ngModel)]="fieldForm.required"> Detener el envío si falta este dato</label>
+            <label class="check"><input name="fieldActive" type="checkbox" [(ngModel)]="fieldForm.active"> Vínculo activo</label>
+            <label class="span-2">Equivalencias JSON<textarea name="rawEquivalences" rows="4" [(ngModel)]="fieldForm.valueMapJson" (change)="readEquivalences()"></textarea></label>
+          </div></details>
+          <div class="actions span-2"><button class="btn btn-primary">{{fieldForm.id ? 'Guardar cambios del campo' : 'Vincular campo'}}</button><button type="button" class="btn btn-secondary" (click)="resetField()">Limpiar selección</button></div>
+        </fieldset>
+      </form>
+      <p class="muted hint">¿Falta un campo? Créalo en EspoCRM y pulsa Actualizar campos para seleccionarlo aquí.</p>
+    </section>
+  }
+  @if (section === 'teams') {
+    <section class="panel">
+      <div class="panel-title"><div><h2>¿Quién atiende cada solicitud?</h2><p class="muted">Relaciona las opciones de una dimensión con los equipos y responsables del CRM.</p></div>
+        <button type="button" class="btn btn-secondary" [disabled]="catalogLoading() || busy()" (click)="loadCatalog()">Actualizar equipos</button></div>
+      @if (catalogLoading()) { <p role="status">Consultando equipos y responsables…</p> }
+      @if (teamCatalogError()) { <p class="alert error" role="alert">{{teamCatalogError()}}</p> }
+      @if (catalogLoaded() && !teams().length) { <p class="notice">La conexión no devuelve equipos. Si ya los creaste en EspoCRM, revisa el acceso del usuario API en sus roles y vuelve a actualizar.</p> }
+      @if (userCatalogError()) { <p class="muted hint">No se pudieron consultar los responsables. Puedes guardar las asignaciones por equipo y actualizar los responsables más adelante.</p> }
+      <div class="form-grid compact-form"><label>Dimensión que determina el área<select name="assignmentDimension" [disabled]="busy() || knowledge.loading()" [ngModel]="assignmentDimension" (ngModelChange)="changeAssignmentDimension($event)">
+        <option value="">Elige una dimensión…</option>
+        @for (d of knowledge.dimensions(); track d.id) { <option [value]="d.code">{{d.name}}{{d.active ? '' : ' (inactiva)'}}</option> }
+      </select></label></div>
+      <form (ngSubmit)="saveAssignments()"><fieldset [disabled]="busy() || loading() || knowledge.loading() || catalogLoading()">
+        <div class="table-wrap"><table class="choice-table"><thead><tr><th>Cuando el resultado sea</th><th>Equipo que lo atiende</th><th>Responsable opcional</th></tr></thead><tbody>
+          @for (o of knowledge.choices(assignmentDimension); track o.id) {
+            <tr><td>{{o.name}}{{o.active ? '' : ' (inactiva)'}}
+              @if (existingAssignment(o.code,'TEAM') && !existingAssignment(o.code,'TEAM').active) { <small class="warning">Vínculo de equipo inactivo</small> }
+            </td><td><select [name]="'team-' + o.id" [attr.aria-label]="'Equipo para ' + o.name" [ngModel]="assignmentValue(o.code,'TEAM')" (ngModelChange)="setAssignment(o.code,'TEAM',$event)">
+              <option value="">Sin equipo</option>
+              @if (assignmentValue(o.code,'TEAM') && !inCatalog(assignmentValue(o.code,'TEAM'),'TEAM')) { <option [value]="assignmentValue(o.code,'TEAM')">{{recordName(assignmentValue(o.code,'TEAM'),'TEAM')}} (guardado, sin acceso al catálogo)</option> }
+              @for (team of teams(); track team.id) { <option [value]="team.id">{{team.name}}</option> }
+            </select></td><td><select [name]="'user-' + o.id" [attr.aria-label]="'Responsable para ' + o.name" [ngModel]="assignmentValue(o.code,'USER')" (ngModelChange)="setAssignment(o.code,'USER',$event)">
+              <option value="">Sin responsable específico</option>
+              @if (assignmentValue(o.code,'USER') && !inCatalog(assignmentValue(o.code,'USER'),'USER')) { <option [value]="assignmentValue(o.code,'USER')">{{recordName(assignmentValue(o.code,'USER'),'USER')}} (guardado, sin acceso al catálogo)</option> }
+              @for (user of users(); track user.id) { <option [value]="user.id">{{user.name}}</option> }
+            </select></td></tr>
+          } @empty { <tr><td colspan="3">Selecciona una dimensión con opciones configuradas en Business Knowledge.</td></tr> }
+        </tbody></table></div>
+        <div class="actions"><button class="btn btn-primary" [disabled]="!assignmentDimension">Guardar equipos y responsables</button></div>
+      </fieldset></form>
+      <details class="advanced lower"><summary>Crear un equipo que todavía no existe</summary>
+        <p class="muted">Esta acción crea o reutiliza un equipo en EspoCRM y guarda su vínculo. Los equipos de la tabla anterior ya existen.</p>
+        <form (ngSubmit)="ensureTeam()"><fieldset class="form-grid" [disabled]="busy() || loading() || knowledge.loading()">
+          <label>Para la opción<select name="newTeamOption" [(ngModel)]="newTeamOption" required><option value="">Selecciona…</option>@for (o of knowledge.choices(assignmentDimension); track o.id) { <option [value]="o.code">{{o.name}}</option> }</select></label>
+          <label>Nombre del nuevo equipo<input name="newTeamName" [(ngModel)]="newTeamName" required maxlength="100"></label>
+          <div class="actions span-2"><button class="btn btn-secondary">Crear y vincular equipo</button></div>
+        </fieldset></form>
+      </details>
+      <details class="advanced lower"><summary>Ver todas las asignaciones guardadas</summary><div class="table-wrap"><table><thead><tr><th>Dimensión</th><th>Opción</th><th>Destino</th><th>Estado</th></tr></thead><tbody>
+        @for (a of assignments(); track a.id) { <tr><td>{{knowledge.dimensionName(a.dimensionCode)}}</td><td>{{knowledge.optionName(a.dimensionCode,a.optionCode)}}</td><td>{{a.externalName || 'Asignación guardada'}} ({{a.assignmentKind === 'TEAM' ? 'Equipo' : 'Responsable'}})</td><td>{{a.active ? 'Activo' : 'Inactivo'}}</td></tr> }
+      </tbody></table></div></details>
+    </section>
+  }
+  @if (section === 'preview') {
+    <section class="panel"><h2>Comprueba el resultado antes de enviar</h2>
+      @if (hasDrafts()) { <p class="notice">Hay cambios de campos o equipos sin guardar. Guárdalos en su paso antes de simular para verlos en el resultado.</p> }
+      <p class="muted">Elige resultados de ejemplo para tu perfil. La simulación utiliza las rutas y los vínculos guardados; no crea un caso.</p>
+      <form (ngSubmit)="preview()"><fieldset class="form-grid" [disabled]="busy() || loading() || knowledge.loading()">
+        @for (d of knowledge.dimensions(); track d.id) {
+          @if (d.active) {
+            <label>{{d.name}}
+              @if (d.primitiveType === 'SCORE') { <input [name]="'sample-' + d.id" type="number" [(ngModel)]="previewSelections[d.code]"> }
+              @else { <select [name]="'sample-' + d.id" [(ngModel)]="previewSelections[d.code]">
+                <option value="">Sin valor</option>
+                @if (d.primitiveType === 'NOUL') { <option value="YES">Sí</option><option value="NO">No</option> }
+                @else { @for (o of knowledge.choices(d.code); track o.id) { @if (o.active) { <option [value]="o.code">{{o.name}}</option> } } }
+              </select> }
+            </label>
+          }
+        }
+        <label>Asunto de ejemplo<input name="sampleSubject" [(ngModel)]="previewSubject"></label>
+        <label>Descripción de ejemplo<textarea name="sampleBody" [(ngModel)]="previewBody" rows="2"></textarea></label>
+        <div class="actions span-2"><button class="btn btn-primary" [disabled]="!knowledge.profileCode()">Simular resultado</button><button type="button" class="btn btn-secondary" (click)="validate()">Validar campos y referencias</button></div>
+      </fieldset></form>
+      @if (validation(); as v) {
+        <div class="notice lower" [class.success]="v.compatible"><strong>{{v.compatible ? 'La configuración es compatible con el catálogo consultado.' : 'Hay vínculos que requieren ajustes.'}}</strong>
+          @for (message of v.errors; track $index) { <p class="alert error">{{message}}</p> }
+          @for (message of v.warnings; track $index) { <p>{{message}}</p> }
+          <p class="hint">Esta comprobación no crea un caso ni verifica todos los permisos de escritura.</p>
+        </div>
+      }
+      @if (previewResult(); as result) {
+        <div class="preview-card lower" role="status"><h3>Resultado de la simulación</h3>
+          <p><strong>Conexión:</strong> {{result.integrationCode}} · {{result.operationCode}}</p>
+          <p><strong>Equipo:</strong> {{previewTeams() || 'Sin equipo asignado'}}</p>
+          <p><strong>Responsable:</strong> {{previewUser() || 'Sin responsable específico'}}</p>
+          @for (field of previewFields(); track field.name) { <p><strong>{{field.name}}:</strong> {{field.value}}</p> }
+          <p class="muted">La ruta del perfil puede elegir una conexión distinta de la seleccionada arriba. Guarda los cambios de campos y equipos antes de simular.</p>
+          <details class="advanced"><summary>Ver petición técnica</summary><pre>{{result.formatted}}</pre></details>
+        </div>
+      }
+    </section>
+  }
+}
+@if (section === 'history') {
+  <section class="panel"><div class="panel-title"><div><h2>Entregas recientes</h2><p class="muted">Resultados de todas las conexiones. Las simulaciones no generan entregas.</p></div><button type="button" class="btn btn-secondary" (click)="reloadAudits()">Actualizar historial</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Conexión</th><th>Resultado</th><th>Caso</th><th>Detalle</th></tr></thead><tbody>
+      @for (a of audits(); track a.id) { <tr><td>{{a.createdAt | date:'short'}}</td><td>{{a.integrationCode || 'Sin envío al CRM'}}</td><td>{{outcome(a.outcome)}}</td><td>{{a.externalNumber || a.externalId || '—'}}</td><td><details><summary>Ver detalle</summary><p>Solicitud: {{a.requestId}}</p>@if (a.externalId) { <p>ID técnico CRM: {{a.externalId}}</p> }<p>Acción: {{a.operationCode || 'No se ejecutó'}}</p><p>Estado HTTP: {{a.httpStatus || 'Sin llamada HTTP'}}</p>@if (a.errorSummary) { <p>{{a.errorSummary}}</p> }</details></td></tr> }
+      @empty { <tr><td colspan="5">Todavía no se han registrado entregas.</td></tr> }
+    </tbody></table></div>
+  </section>
+}

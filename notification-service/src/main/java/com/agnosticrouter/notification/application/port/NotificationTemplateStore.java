@@ -7,6 +7,7 @@ public interface NotificationTemplateStore {
     java.util.List<NotificationTemplate> findAll();
     java.util.Optional<NotificationTemplate> findById(Long id);
     java.util.Optional<NotificationTemplate> findFirstByProfileCodeAndEventTypeAndActiveTrue(String profileCode, String eventType);
+    boolean existsByProfileCodeAndEventTypeAndActiveFalse(String profileCode, String eventType);
     <S extends NotificationTemplate> S save(S entity);
     void deleteById(Long id);
 }

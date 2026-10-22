@@ -1,0 +1,46 @@
+<header class="page-header"><div><p class="eyebrow">Business Knowledge</p><h1>Conocimiento del negocio</h1><p class="muted">Define qué información debe reconocer el motor, qué respuestas puede dar y cuándo usar una regla.</p></div><a class="btn btn-secondary" routerLink="/ai-providers">Configurar proveedores IA</a></header>
+@if (error()) { <p class="alert error" role="alert">{{error()}} <button type="button" class="link" [disabled]="locked()" (click)="loadProfiles()">Actualizar</button></p> }
+@if (info()) { <p class="notice success" role="status">{{info()}}</p> }
+<section class="panel workflow-context"><div class="form-grid">
+  <label>Perfil que quieres configurar<select name="knowledgeProfile" [ngModel]="selectedProfile?.id" (ngModelChange)="selectProfile($event)" [disabled]="locked()"><option [ngValue]="undefined">Selecciona un perfil…</option>@for (p of profiles(); track p.id) { <option [ngValue]="p.id">{{p.name}}{{p.active ? '' : ' (inactivo)'}}</option> }</select></label>
+  <label>Decisión del perfil<select name="knowledgeDimension" [ngModel]="selectedDimension?.id" (ngModelChange)="selectDimension($event)" [disabled]="locked() || !selectedProfile"><option [ngValue]="undefined">Selecciona una decisión…</option>@for (d of dimensions(); track d.id) { <option [ngValue]="d.id">{{d.name}}{{d.active ? '' : ' (inactiva)'}}</option> }</select></label>
+</div>@if (loading()) { <p class="context-status" role="status">Cargando la configuración del perfil…</p> } @else { <p class="context-status">{{dimensions().length}} decisiones configuradas. Las respuestas y reglas pertenecen a la decisión seleccionada.</p> }</section>
+<nav class="workflow-nav" aria-label="Pasos de conocimiento del negocio">@for (s of steps; track s.key) { <button type="button" [class.current]="step() === s.key" [attr.aria-current]="step() === s.key ? 'step' : null" [disabled]="locked() || (s.key !== 'profile' && !selectedProfile) || (['answers','rules'].includes(s.key) && !selectedDimension)" (click)="navigate(s.key)">{{s.label}}</button> }</nav>
+@if (step() === 'profile') {
+  <section class="panel"><div class="panel-title"><div><h2>¿Para qué negocio o proceso?</h2><p class="muted">Un perfil reúne las decisiones de un proceso, por ejemplo atención al cliente o soporte técnico.</p></div><button type="button" class="btn btn-secondary" [disabled]="locked()" (click)="newProfile()">Nuevo perfil</button></div>
+    @if (profileEditor) { <app-knowledge-profile-editor [model]="profileForm" [codes]="profileCodes()" [busy]="locked()" (save)="saveProfile()" (cancel)="profileEditor=false"></app-knowledge-profile-editor> }
+    @else if (selectedProfile) { <div class="preview-card"><h3>{{selectedProfile.name}}</h3><p>{{selectedProfile.active ? 'Disponible para procesar solicitudes' : 'Perfil deshabilitado'}}</p><p>{{dimensions().length}} decisiones: @for (d of dimensions(); track d.id; let last = $last) { {{d.name}}{{last ? '' : ', '}} }</p><div class="actions"><button type="button" class="btn btn-secondary" [disabled]="locked()" (click)="editProfile()">Editar perfil</button><button type="button" class="btn btn-primary" [disabled]="locked()" (click)="navigate('decisions')">Configurar decisiones</button></div></div><details class="advanced lower"><summary>Administrar perfil</summary><p>Identificador: {{selectedProfile.code}} · Versión: {{selectedProfile.version}}</p><button type="button" class="btn btn-danger" [disabled]="locked()" (click)="deleteProfile()">Eliminar perfil</button></details> }
+    @else { <p class="empty">Crea tu primer perfil para empezar.</p> }
+  </section>
+}
+@if (step() === 'decisions') {
+  <section class="panel"><div class="panel-title"><div><h2>¿Qué debe decidir el motor?</h2><p class="muted">Cada decisión es una dimensión: producto, tipo de solicitud, prioridad o área de atención.</p></div><button type="button" class="btn btn-primary" [disabled]="locked() || !selectedProfile" (click)="newDimension()">Añadir decisión</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Decisión</th><th>Respuesta</th><th>Orden</th><th>Estado</th><th></th></tr></thead><tbody>
+      @for (d of dimensions(); track d.id) { <tr><td><strong>{{d.name}}</strong></td><td>{{typeName(d.primitiveType)}}</td><td>{{d.executionOrder}}</td><td>{{d.active ? 'Habilitada' : 'Inactiva'}}{{d.required ? ' · Necesaria' : ''}}</td><td><div class="actions"><button type="button" class="link" [disabled]="locked()" (click)="selectDimension(d.id);navigate('answers')">Ver respuestas</button><button type="button" class="link" [disabled]="locked()" (click)="editDimension(d)">Editar</button><button type="button" class="link" [disabled]="locked()" (click)="deleteDimension(d)">Quitar</button></div></td></tr> }
+      @empty { <tr><td colspan="5">Añade la primera decisión de este perfil.</td></tr> }
+    </tbody></table></div>
+    @if (dimensionEditor) { <h3>{{dimensionForm.id ? 'Editar decisión' : 'Nueva decisión'}}</h3><app-knowledge-dimension-editor [model]="dimensionForm" [dimensions]="dimensions()" [options]="allOptions()" [busy]="locked()" (save)="saveDimension()"></app-knowledge-dimension-editor> }
+  </section>
+}
+@if (step() === 'answers') {
+  <section class="panel"><div class="panel-title"><div><h2>Respuestas de {{selectedDimension?.name}}</h2><p class="muted">Describe las respuestas posibles para que el motor pueda distinguirlas.</p></div><button type="button" class="btn btn-primary" [disabled]="locked() || !selectedDimension" (click)="newOption()">Añadir respuesta</button></div>
+    @if (selectedDimension?.primitiveType === 'NOUL') { <p class="notice">Esta decisión responde Sí o No. No necesita opciones adicionales.</p> }
+    @if (selectedDimension?.primitiveType === 'SCORE') { <p class="notice">En una puntuación, las opciones describen los criterios que se envían al proveedor de IA.</p> }
+    <div class="table-wrap"><table><thead><tr><th>Respuesta</th><th>Cuándo corresponde</th><th>Estado</th><th></th></tr></thead><tbody>
+      @for (o of choices(); track o.id) { <tr><td><strong>{{o.name}}</strong></td><td>{{o.description}}</td><td>{{o.active ? 'Habilitada' : 'Inactiva'}}</td><td><div class="actions"><button type="button" class="link" [disabled]="locked()" (click)="editOption(o)">Editar</button><button type="button" class="link" [disabled]="locked()" (click)="deleteOption(o)">Quitar</button></div></td></tr> }
+      @empty { <tr><td colspan="4">No hay respuestas configuradas para esta decisión.</td></tr> }
+    </tbody></table></div>
+    @if (optionEditor) { <h3>{{optionForm.id ? 'Editar respuesta' : 'Nueva respuesta'}}</h3><app-knowledge-option-editor [model]="optionForm" [choices]="choices()" [dimensions]="dimensions()" [options]="allOptions()" [dimensionOrder]="selectedDimension?.executionOrder || 0" [busy]="locked()" (save)="saveOption()"></app-knowledge-option-editor> }
+  </section>
+}
+@if (step() === 'rules') {
+  <section class="panel"><div class="panel-title"><div><h2>Reglas de {{selectedDimension?.name}}</h2><p class="muted">Relaciona expresiones del correo con una respuesta existente. Las reglas son opcionales: sin una regla concluyente se consulta la IA.</p></div><button type="button" class="btn btn-primary" [disabled]="locked() || rulesLoading() || !choices().length" (click)="newRule()">Añadir regla</button></div>
+    @if (rulesLoading()) { <p role="status">Cargando reglas…</p> }
+    <div class="table-wrap"><table><thead><tr><th>Si el correo…</th><th>Respuesta</th><th>Cómo se utiliza</th><th>Estado</th><th></th></tr></thead><tbody>
+      @for (r of rules(); track r.id) { <tr><td>{{ruleDescription(r)}}<small class="muted" style="display:block;max-width:28rem;overflow-wrap:anywhere">{{r.pattern}}</small></td><td>{{optionName(r.targetOptionCode)}}</td><td>{{r.strength === 'HARD' ? 'Decisión directa si no hay conflicto' : 'Sugerencia para la IA'}}</td><td>{{r.active ? 'Habilitada' : 'Inactiva'}}</td><td><div class="actions"><button type="button" class="link" [disabled]="locked() || rulesLoading()" (click)="editRule(r)">Editar</button><button type="button" class="link" [disabled]="locked() || rulesLoading()" (click)="deleteRule(r)">Quitar</button></div></td></tr> }
+      @empty { <tr><td colspan="5">No hay reglas. Configura las respuestas antes de añadir una.</td></tr> }
+    </tbody></table></div>
+    @if (ruleEditor) { <h3>{{ruleForm.id ? 'Editar regla' : 'Nueva regla'}}</h3><app-knowledge-rule-editor [model]="ruleForm" [choices]="choices()" [rules]="rules()" [busy]="locked() || rulesLoading()" (save)="saveRule()"></app-knowledge-rule-editor> }
+  </section>
+}
+<div class="workflow-footer"><button type="button" class="btn btn-secondary" [disabled]="locked() || step() === 'profile'" (click)="previous()">Anterior</button>@if (step() !== 'rules') { <button type="button" class="btn btn-primary" [disabled]="locked() || !selectedProfile || (step() !== 'profile' && !selectedDimension)" (click)="next()">Continuar</button> }</div>

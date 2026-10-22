@@ -6,6 +6,7 @@ import com.agnosticrouter.decision.domain.service.HardRuleDecisionResolver;
 import com.agnosticrouter.decision.domain.service.DimensionDependencyPolicy;
 import com.agnosticrouter.decision.domain.service.DecisionContextBuilder;
 import com.agnosticrouter.decision.application.port.KnowledgeProfileProvider;
+import com.agnosticrouter.decision.application.model.AiFailureExplanation;
 
 import com.agnosticrouter.contracts.DecisionValue;
 import com.agnosticrouter.contracts.IncomingEmailEvent;
@@ -46,7 +47,7 @@ public class GenericDecisionEngine {
 
         Map<String, DecisionValue> decisions = new LinkedHashMap<>();
         boolean review = false;
-        boolean aiUnavailableForThisMessage = false;
+        AiFailureExplanation aiFailure = null;
         String raw = (email.subject() + "\n" + email.body()).trim();
 
         Map<String, Object> baseState = new LinkedHashMap<>();
@@ -77,12 +78,16 @@ public class GenericDecisionEngine {
                     .toList();
 
             if (eligible.isEmpty() && !"NOUL".equalsIgnoreCase(dimension.primitiveType())) {
+                decisions.put(dimension.code(), DecisionDiagnostics.explain(dimension, unavailable(dimension),
+                        "NO_ELIGIBLE_OPTIONS", "No hay respuestas habilitadas que cumplan las condiciones de esta decisión.", null));
+                if (dimension.required()) review = true;
                 continue;
             }
 
             Optional<DecisionValue> hardDecision = hardRuleDecisions.resolve(raw, dimension);
             if (hardDecision.isPresent()) {
-                decisions.put(dimension.code(), hardDecision.get());
+                decisions.put(dimension.code(), DecisionDiagnostics.explain(dimension, hardDecision.get(),
+                        "RULE_MATCH", "Una regla determinística resolvió esta decisión.", null));
                 continue;
             }
 
@@ -91,18 +96,19 @@ public class GenericDecisionEngine {
             // HARD was already resolved above; only unresolved dimensions may use AI.
             // SOFT rules are passed as hints, never as authoritative classifications.
             DecisionValue value;
-            if (aiUnavailableForThisMessage) {
-                value = unavailable(dimension);
+            if (aiFailure != null) {
+                value = DecisionDiagnostics.explain(dimension, unavailable(dimension), "AI_SKIPPED_AFTER_FAILURE",
+                        "No se volvió a consultar la IA porque falló antes en este correo. " + aiFailure.message(), aiFailure.status());
             } else {
                 try {
                     value = aiDimensions.evaluate(dimension, eligible, state, softHints);
                 } catch (RuntimeException ex) {
                     // Avoid redelivery/credit loops if the provider is unavailable.
                     // Healthy requests still evaluate every unresolved dimension independently.
-                    aiUnavailableForThisMessage = true;
-                    log.warn("AI unavailable for requestId={} dimension={} ({})",
-                            email.requestId(), dimension.code(), ex.getClass().getSimpleName());
-                    value = unavailable(dimension);
+                    aiFailure = AiFailureExplanation.from(ex);
+                    log.warn("AI unavailable for requestId={} dimension={} code={} httpStatus={}",
+                            email.requestId(), dimension.code(), aiFailure.code(), aiFailure.status());
+                    value = DecisionDiagnostics.explain(dimension, unavailable(dimension), aiFailure.code(), aiFailure.message(), aiFailure.status());
                 }
             }
             decisions.put(dimension.code(), value);

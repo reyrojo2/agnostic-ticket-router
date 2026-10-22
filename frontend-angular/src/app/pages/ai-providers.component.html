@@ -1,0 +1,39 @@
+<header class="page-header"><div><p class="eyebrow">Motor de decisiones</p><h1>Proveedores de inteligencia artificial</h1><p class="muted">Configura conexiones compatibles con SystemOne. El motor las consulta cuando las reglas no resuelven una decisión.</p></div><button type="button" class="btn btn-primary" [disabled]="busy() || loading()" (click)="newProvider()">Añadir proveedor</button></header>
+@if (error()) { <p class="alert error" role="alert">{{error()}} <button type="button" class="link" (click)="load()">Actualizar</button></p> }
+@if (info()) { <p class="notice success" role="status">{{info()}}</p> }
+@if (loading()) { <p role="status">Cargando proveedores…</p> }
+@if (settings(); as state) {
+  <section class="panel"><h2>Proveedor que utiliza el motor</h2><p><strong>{{currentName()}}</strong></p><p class="muted">Cambiar el proveedor afecta a las próximas consultas de todos los perfiles. Guardar una conexión nueva no la activa automáticamente.</p>
+    @if (state.defaultProviderId === null) { <p class="hint">Servidor: {{state.environmentBaseUrl}} · Modelo: {{state.environmentModel || 'Predeterminado del proveedor'}} · {{state.environmentKeyConfigured ? 'Con credencial configurada' : 'Sin credencial'}}</p> }
+    @else { <button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="useEnvironment()">Volver a la configuración del servidor</button> }
+    @if (!state.keyStorageAvailable) { <p class="notice">El administrador debe habilitar el cifrado de credenciales en el servidor antes de guardar API keys. Las conexiones sin autenticación siguen disponibles.</p> }
+  </section>
+}
+@if (editing) {
+  <section class="panel lower"><h2>{{selected ? 'Editar conexión IA' : 'Nueva conexión IA'}}</h2>
+    <form (ngSubmit)="save()"><fieldset class="form-grid" [disabled]="busy() || loading()">
+      <label>Nombre para reconocerla<input name="aiName" [(ngModel)]="form.name" placeholder="Proveedor principal" required maxlength="160"></label>
+      <label>Dirección del proveedor<input name="aiBaseUrl" [(ngModel)]="form.baseUrl" placeholder="https://servidor-del-proveedor" required maxlength="1000"></label>
+      <label>Cómo se autentica<select name="aiAuth" [(ngModel)]="form.authType"><option value="BEARER">API key como Bearer</option><option value="API_KEY_HEADER">API key en una cabecera</option><option value="NONE">Sin autenticación (servidor local)</option></select></label>
+      @if (form.authType !== 'NONE') {
+        <label>API key<input name="aiApiKey" type="password" [(ngModel)]="form.apiKey" autocomplete="new-password" [placeholder]="selected?.apiKeyConfigured ? 'Hay una clave guardada; deja vacío para conservarla' : 'Introduce la clave del proveedor'" maxlength="4096"><small>{{selected?.apiKeyConfigured ? 'La clave guardada no se muestra. Introduce otra para reemplazarla.' : 'Se guarda cifrada en el servidor.'}}</small></label>
+      }
+      @if (form.authType === 'API_KEY_HEADER') { <label>Nombre de la cabecera<input name="aiKeyHeader" [(ngModel)]="form.apiKeyHeader" placeholder="X-Api-Key" required></label> }
+      <label>Modelo<input name="aiModel" [(ngModel)]="form.model" placeholder="Identificador exacto que indique tu proveedor"><small>Algunos proveedores lo exigen. Déjalo vacío solo si tu servidor admite un modelo predeterminado.</small></label>
+      <label>Idioma<input name="aiLanguage" [(ngModel)]="form.language" placeholder="es"></label>
+      <details class="advanced span-2"><summary>Opciones avanzadas</summary><div class="form-grid">
+        <label>Ruta de la API SystemOne<input name="aiEndpoint" [(ngModel)]="form.endpointPath" required></label>
+        <label class="check"><input name="aiEnabled" type="checkbox" [(ngModel)]="form.enabled" [disabled]="!!selected?.defaultProvider"> Conexión habilitada</label>
+        @if (selected?.apiKeyConfigured) { <label class="check"><input name="aiRemoveKey" type="checkbox" [(ngModel)]="form.removeApiKey"> Eliminar la clave guardada al guardar</label> }
+      </div></details>
+      <div class="actions span-2"><button class="btn btn-primary">Guardar proveedor</button><button type="button" class="btn btn-secondary" (click)="close()">Cancelar</button></div>
+    </fieldset></form>
+  </section>
+}
+<section class="panel lower"><h2>Conexiones guardadas</h2><div class="table-wrap"><table><thead><tr><th>Proveedor</th><th>Modelo</th><th>Credencial</th><th>Uso</th><th>Acciones</th></tr></thead><tbody>
+  @for (provider of providers(); track provider.id) {
+    <tr><td><strong>{{provider.name}}</strong><small class="muted" style="display:block">{{provider.baseUrl}}</small></td><td>{{provider.model || 'Predeterminado'}}</td><td>{{provider.authType === 'NONE' ? 'No requiere' : provider.apiKeyConfigured ? 'Guardada' : 'Sin clave'}}</td><td>{{provider.defaultProvider ? 'En uso por el motor' : provider.enabled ? 'Disponible' : 'Deshabilitado'}}</td>
+      <td><div class="actions"><button type="button" class="link" [disabled]="busy() || loading()" (click)="edit(provider)">Editar</button><button type="button" class="btn btn-secondary" [disabled]="busy() || loading() || !provider.enabled" (click)="test(provider)">Probar conexión</button>@if (!provider.defaultProvider) { <button type="button" class="btn btn-primary" [disabled]="busy() || loading() || !provider.enabled" (click)="select(provider)">Usar para decisiones</button><button type="button" class="link" [disabled]="busy() || loading()" (click)="delete(provider)">Eliminar</button> }</div></td></tr>
+  } @empty { <tr><td colspan="5">Aún no has guardado proveedores. El motor conserva la configuración del servidor.</td></tr> }
+</tbody></table></div><p class="muted hint">Probar conexión envía una solicitud sintética al proveedor y puede consumir cuota. No se envían correos ni se crean casos CRM.</p></section>
+@if (probe(); as result) { <section class="notice lower" [class.success]="result.success" role="status"><strong>{{probeName()}}</strong><p>{{result.message}}</p><small>Tiempo de respuesta: {{result.durationMs}} ms</small></section> }

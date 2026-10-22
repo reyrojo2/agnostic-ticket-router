@@ -3,6 +3,7 @@ package com.agnosticrouter.decision.application.service;
 import com.agnosticrouter.decision.application.port.DecisionAiClient;
 import com.agnosticrouter.decision.domain.model.KnowledgeModels;
 import com.agnosticrouter.decision.application.model.SystemOneModels;
+import com.agnosticrouter.decision.application.model.AiProviderFailure;
 import com.agnosticrouter.decision.application.port.KnowledgeProfileProvider;
 import com.agnosticrouter.decision.domain.service.RuleEvaluator;
 import com.agnosticrouter.decision.domain.service.HardRuleDecisionResolver;
@@ -119,5 +120,32 @@ class GenericDecisionEngineRoutingTest {
         assertEquals("UNAVAILABLE",result.decisions().get("DESTINO").source());
         assertEquals("UNAVAILABLE",result.decisions().get("PRODUCTO").source());
         verify(ai,times(1)).decide(any(),anyString(),any(),anyDouble());
+    }
+
+    @Test void missingModelExplainsTheFailureAndLaterSkippedDecisionsWhileHardRulesStillRun() {
+        var knowledge=mock(KnowledgeProfileProvider.class);
+        var ai=mock(DecisionAiClient.class);
+        when(ai.decide(any(),anyString(),any(),anyDouble())).thenThrow(new AiProviderFailure(422,true));
+        var result=engine(knowledge,ai,dimension("PRIORIDAD",List.of()),dimension("DESTINO",List.of()),
+                dimension("PRODUCTO",List.of(rule("R1","HARD","BACKOFFICE","cambio ruc")))).evaluate(email());
+        assertTrue(result.requiresHumanReview());
+        var first=result.decisions().get("PRIORIDAD").diagnostic();
+        assertEquals("AI_MODEL_REQUIRED",first.code()); assertEquals(422,first.providerStatus());
+        assertTrue(first.required()); assertEquals(.8,first.minimumConfidence());
+        assertEquals("AI_SKIPPED_AFTER_FAILURE",result.decisions().get("DESTINO").diagnostic().code());
+        assertEquals("Backoffice",result.decisions().get("PRODUCTO").diagnostic().valueName());
+        assertEquals("RULE_MATCH",result.decisions().get("PRODUCTO").diagnostic().code());
+        verify(ai,times(1)).decide(any(),anyString(),any(),anyDouble());
+    }
+
+    @Test void requiredDecisionWithoutEligibleResponsesCannotSilentlyReachCrm() {
+        var knowledge=mock(KnowledgeProfileProvider.class);
+        var ai=mock(DecisionAiClient.class);
+        var original=dimension("DESTINO",List.of());
+        var empty=new KnowledgeModels.DimensionConfig(original.code(),original.name(),"CHOICE","Elige",1,true,.8,.1,null,null,List.of(),List.of());
+        var result=engine(knowledge,ai,empty).evaluate(email());
+        assertTrue(result.requiresHumanReview());
+        assertEquals("NO_ELIGIBLE_OPTIONS",result.decisions().get("DESTINO").diagnostic().code());
+        verifyNoInteractions(ai);
     }
 }

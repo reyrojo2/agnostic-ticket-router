@@ -1,13 +1,27 @@
 package com.agnosticrouter.crm.api.controller;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 @RestControllerAdvice(assignableTypes = CrmMappingController.class)
 public class CrmMappingErrorHandler {
+    @ExceptionHandler(NoSuchElementException.class)
+    public ResponseEntity<Map<String, String>> missing(NoSuchElementException error) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("detail", "La operación o el mapeo CRM ya no existe. Actualiza la configuración."));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> conflict(DataIntegrityViolationException error) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("detail", "El mapeo entra en conflicto con la configuración guardada. Actualiza y edita el existente; comprueba también que la operación siga disponible."));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException error) {
         return ResponseEntity.badRequest().body(Map.of("detail", error.getMessage() == null ? "Entrada inválida" : error.getMessage()));

@@ -1,29 +1,30 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { API } from './api.config';
+import { KnowledgeProfile, KnowledgeDimension, KnowledgeOption, KnowledgeRule } from './knowledge-models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   constructor(private readonly http: HttpClient) {}
 
   profiles() { return this.http.get<any[]>(`${API.knowledge}/api/v1/admin/profiles`); }
-  createProfile(body: any) { return this.http.post(`${API.knowledge}/api/v1/admin/profiles`, body); }
-  updateProfile(id: number, body: any) { return this.http.put(`${API.knowledge}/api/v1/admin/profiles/${id}`, body); }
+  createProfile(body: KnowledgeProfile) { return this.http.post<KnowledgeProfile>(`${API.knowledge}/api/v1/admin/profiles`, body); }
+  updateProfile(id: number, body: KnowledgeProfile) { return this.http.put<KnowledgeProfile>(`${API.knowledge}/api/v1/admin/profiles/${id}`, body); }
   deleteProfile(id: number) { return this.http.delete(`${API.knowledge}/api/v1/admin/profiles/${id}`); }
 
   dimensions(profileId: number) { return this.http.get<any[]>(`${API.knowledge}/api/v1/admin/profiles/${profileId}/dimensions`); }
-  createDimension(profileId: number, body: any) { return this.http.post(`${API.knowledge}/api/v1/admin/profiles/${profileId}/dimensions`, body); }
-  updateDimension(id: number, body: any) { return this.http.put(`${API.knowledge}/api/v1/admin/dimensions/${id}`, body); }
+  createDimension(profileId: number, body: KnowledgeDimension) { return this.http.post<KnowledgeDimension>(`${API.knowledge}/api/v1/admin/profiles/${profileId}/dimensions`, body); }
+  updateDimension(id: number, body: KnowledgeDimension) { return this.http.put<KnowledgeDimension>(`${API.knowledge}/api/v1/admin/dimensions/${id}`, body); }
   deleteDimension(id: number) { return this.http.delete(`${API.knowledge}/api/v1/admin/dimensions/${id}`); }
 
   options(dimensionId: number) { return this.http.get<any[]>(`${API.knowledge}/api/v1/admin/dimensions/${dimensionId}/options`); }
-  createOption(dimensionId: number, body: any) { return this.http.post(`${API.knowledge}/api/v1/admin/dimensions/${dimensionId}/options`, body); }
-  updateOption(id: number, body: any) { return this.http.put(`${API.knowledge}/api/v1/admin/options/${id}`, body); }
+  createOption(dimensionId: number, body: KnowledgeOption) { return this.http.post<KnowledgeOption>(`${API.knowledge}/api/v1/admin/dimensions/${dimensionId}/options`, body); }
+  updateOption(id: number, body: KnowledgeOption) { return this.http.put<KnowledgeOption>(`${API.knowledge}/api/v1/admin/options/${id}`, body); }
   deleteOption(id: number) { return this.http.delete(`${API.knowledge}/api/v1/admin/options/${id}`); }
 
   rules(dimensionId: number) { return this.http.get<any[]>(`${API.knowledge}/api/v1/admin/dimensions/${dimensionId}/rules`); }
-  createRule(dimensionId: number, body: any) { return this.http.post(`${API.knowledge}/api/v1/admin/dimensions/${dimensionId}/rules`, body); }
-  updateRule(id: number, body: any) { return this.http.put(`${API.knowledge}/api/v1/admin/rules/${id}`, body); }
+  createRule(dimensionId: number, body: KnowledgeRule) { return this.http.post<KnowledgeRule>(`${API.knowledge}/api/v1/admin/dimensions/${dimensionId}/rules`, body); }
+  updateRule(id: number, body: KnowledgeRule) { return this.http.put<KnowledgeRule>(`${API.knowledge}/api/v1/admin/rules/${id}`, body); }
   deleteRule(id: number) { return this.http.delete(`${API.knowledge}/api/v1/admin/rules/${id}`); }
 
   crmIntegrations() { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/integrations`); }
@@ -47,7 +48,7 @@ export class ApiService {
   createCrmAssignment(operationId: number, body: any) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/assignments`, body); }
   updateCrmAssignment(operationId: number, id: number, body: any) { return this.http.put<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/assignments/${id}`, body); }
   deleteCrmAssignment(id: number) { return this.http.delete(`${API.crm}/api/v1/admin/crm/assignments/${id}`); }
-  crmCatalogFields(integrationId: number) { return this.http.get<Record<string, any>>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/fields`); }
+  crmCatalogFields(integrationId: number, entity = 'Case') { return this.http.get<Record<string, any>>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/fields`, { params: { entity } }); }
   crmCatalogTeams(integrationId: number) { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/teams`); }
   crmCatalogUsers(integrationId: number) { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/users`); }
   crmEnsureTeam(operationId: number, body: any) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/teams/ensure`, body); }
@@ -69,6 +70,6 @@ export class ApiService {
   gmailSave(body:any) { return this.http.put<any>('/api/v1/admin/gmail/settings',body); }
   gmailSync() { return this.http.post<any>('/api/v1/admin/gmail/sync',{}); }
   gmailDisconnect() { return this.http.delete('/api/v1/admin/gmail/connection'); }
-  operationalMetrics() { return this.http.get<any>('/api/v1/admin/metrics/overview'); }
+  operationalMetrics() { return this.http.get<import('./metrics-models').OperationalMetrics>('/api/v1/admin/metrics/overview'); }
   submitEmail(body: any) { return this.http.post(`${API.intake}/api/v1/intake/emails`, body); }
 }

@@ -1,0 +1,17 @@
+@if (validationError) { <p class="alert error" role="alert">{{validationError}}</p> }
+<form (ngSubmit)="submit()"><fieldset class="form-grid" [disabled]="busy">
+  <label>¿Qué dato quieres decidir?<input name="dimensionName" [(ngModel)]="model.name" (ngModelChange)="nameChanged()" placeholder="Prioridad, producto, área de atención…" required maxlength="160"></label>
+  <label>Tipo de respuesta<select name="dimensionType" [(ngModel)]="model.primitiveType"><option value="CHOICE">Elegir una de las respuestas configuradas</option><option value="SCORE">Calcular una puntuación</option><option value="NOUL">Responder sí o no</option></select></label>
+  <label class="span-2">¿Cómo debe decidirlo el motor?<textarea name="dimensionInstructions" [(ngModel)]="model.instructions" rows="3" placeholder="Explica qué debe identificar y cómo distinguir las respuestas." required></textarea></label>
+  <label class="check"><input name="dimensionRequired" type="checkbox" [(ngModel)]="model.required"> Necesario para el envío automático</label>
+  <label class="check"><input name="dimensionActive" type="checkbox" [(ngModel)]="model.active"> Decisión habilitada</label>
+  <details class="advanced span-2"><summary>Cuándo se aplica y criterios de aceptación</summary><div class="form-grid">
+    <label>Aplicar después de<select name="dimensionParent" [(ngModel)]="model.dependsOnDimensionCode" (ngModelChange)="model.dependsOnOptionCode=null"><option [ngValue]="null">Siempre, sin condición previa</option>@if (model.dependsOnDimensionCode && !parentAvailable()) { <option [value]="model.dependsOnDimensionCode">{{model.dependsOnDimensionCode}} (revisar orden)</option> }@for (d of dependencies(); track d.id) { <option [value]="d.code">{{d.name}}</option> }</select></label>
+    @if (model.dependsOnDimensionCode) { <label>Cuando su respuesta sea<select name="dimensionParentOption" [(ngModel)]="model.dependsOnOptionCode"><option [ngValue]="null">Cualquier respuesta</option>@for (o of parentOptions(); track o.id) { <option [value]="o.code">{{o.name}}</option> }</select></label> }
+    <label>Confianza mínima de IA (%)<input name="dimensionConfidence" type="number" min="0" max="100" [(ngModel)]="confidence" required></label>
+    <label>Diferencia mínima entre alternativas (%)<input name="dimensionMargin" type="number" min="0" max="100" [(ngModel)]="margin" required></label>
+    <label>Orden de evaluación<input name="dimensionOrder" type="number" min="0" [(ngModel)]="model.executionOrder" required></label>
+    <label>Identificador estable<input name="dimensionCode" [(ngModel)]="model.code" [readonly]="!!model.id" (input)="customCode=true" required></label>
+  </div><p class="hint muted">Las condiciones usan decisiones anteriores. Una confianza insuficiente en un dato obligatorio deriva el caso a revisión.</p></details>
+  <div class="actions span-2"><button class="btn btn-primary">Guardar decisión</button></div>
+</fieldset></form>

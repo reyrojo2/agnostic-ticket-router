@@ -79,7 +79,8 @@ public class CrmHttpExecutor implements CrmExecutionPort {
                             externalId,
                             response.body(),
                             attempt,
-                            null
+                            null,
+                            responseExtractor.extract(response.body(), operation.getExternalNumberPath())
                     );
                 }
 

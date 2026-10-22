@@ -95,6 +95,9 @@ services:
       KNOWLEDGE_BASE_URL: http://business-knowledge-service
       AI_BASE_URL: ${AI_BASE_URL_DOCKER:-http://host.docker.internal:8000}
       AI_API_KEY: ${AI_API_KEY:-}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      AI_CONFIG_ENCRYPTION_KEY: ${AI_CONFIG_ENCRYPTION_KEY:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
       AI_MODEL: ${AI_MODEL:-multilingual}
       AI_LANG: ${AI_LANG:-es}
     ports: ["127.0.0.1:8083:8083"]
@@ -160,6 +163,7 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:?required}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?required}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?required}
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
     ports: ["127.0.0.1:8085:8085"]
     depends_on:

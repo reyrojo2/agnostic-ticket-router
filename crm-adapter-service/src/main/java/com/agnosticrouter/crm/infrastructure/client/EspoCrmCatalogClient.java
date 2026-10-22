@@ -18,6 +18,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 /** EspoCRM-specific implementation. Generic CRM case flow does not depend on this adapter. */
 @Component
@@ -110,6 +112,18 @@ public class EspoCrmCatalogClient implements CrmCatalogPort {
         } catch (java.io.IOException ex) {
             throw new IllegalStateException("EspoCRM no está disponible para comprobar " + entity, ex);
         }
+    }
+
+    public AssignmentAccess assignmentAccess(CrmIntegration integration) {
+        requireEspo(integration);
+        JsonNode response = request(integration, "GET", "/api/v1/App/user", null);
+        JsonNode user = response.path("user");
+        if (!user.isObject()) throw new IllegalStateException("EspoCRM no devolvió la cuenta API para validar asignaciones.");
+        Set<String> teams = new LinkedHashSet<>();
+        JsonNode teamIds = user.path("teamsIds");
+        if (teamIds.isArray()) teamIds.forEach(id -> { if (id.isTextual()) teams.add(id.asText()); });
+        String permission = response.path("acl").path("assignmentPermission").asText("no");
+        return new AssignmentAccess(user.path("userName").asText("cuenta API"), permission, Set.copyOf(teams));
     }
 
     private JsonNode request(CrmIntegration integration, String method, String relativePath, String body) {

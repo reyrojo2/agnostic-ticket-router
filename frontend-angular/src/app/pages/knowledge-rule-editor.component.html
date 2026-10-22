@@ -1,0 +1,10 @@
+<form (ngSubmit)="submit()"><fieldset class="form-grid" [disabled]="busy">
+  <label>Si el correo cumple<select name="ruleType" [(ngModel)]="model.ruleType" (ngModelChange)="changeType()"><option value="CONTAINS_ANY">Contiene alguna de estas expresiones</option><option value="CONTAINS_ALL">Contiene todas estas expresiones</option><option value="REGEX">Coincide con una expresión regular (avanzado)</option></select></label>
+  <label>Elegir o sugerir esta respuesta<select name="ruleTarget" [(ngModel)]="model.targetOptionCode" required><option value="">Selecciona una respuesta…</option>@for (o of choices; track o.id) { <option [value]="o.code">{{o.name}}{{o.active ? '' : ' (inactiva)'}}</option> }</select></label>
+  <label class="span-2">{{model.ruleType === 'REGEX' ? 'Expresión regular' : 'Expresiones, una por línea'}}<textarea name="ruleExpressions" [(ngModel)]="lines" (ngModelChange)="updatePattern()" rows="4" required></textarea></label>
+  <label>Cómo usar la coincidencia<select name="ruleStrength" [(ngModel)]="model.strength"><option value="SOFT">Sugerir esta respuesta a la IA</option><option value="HARD">Resolver directamente cuando no haya conflicto</option></select></label>
+  <label class="check"><input name="ruleActive" type="checkbox" [(ngModel)]="model.active"> Regla habilitada</label>
+  <p class="muted hint span-2">Las sugerencias aportan contexto a la IA. Las reglas directas evitan consultarla si sus coincidencias apuntan a una única respuesta.</p>
+  <details class="advanced span-2"><summary>Orden e identificador</summary><div class="form-grid"><label>Orden de evaluación<input name="rulePriority" type="number" [(ngModel)]="model.priority"></label><label>Identificador estable<input name="ruleCode" [(ngModel)]="model.code" [readonly]="!!model.id" placeholder="Se genera al guardar"></label></div></details>
+  <div class="actions span-2"><button class="btn btn-primary" [disabled]="!choices.length">Guardar regla</button></div>
+</fieldset></form>

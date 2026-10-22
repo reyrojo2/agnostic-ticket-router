@@ -1,0 +1,14 @@
+<form (ngSubmit)="submit()"><fieldset class="form-grid" [disabled]="busy">
+  <label>Nombre de la respuesta<input name="optionName" [(ngModel)]="model.name" (ngModelChange)="nameChanged()" placeholder="Soporte, facturación, prioridad alta…" required maxlength="160"></label>
+  <label class="check"><input name="optionActive" type="checkbox" [(ngModel)]="model.active"> Respuesta habilitada</label>
+  <label class="span-2">¿Cuándo corresponde esta respuesta?<textarea name="optionDescription" [(ngModel)]="model.description" rows="3" required placeholder="Describe qué solicitudes deben recibir esta respuesta."></textarea></label>
+  <details class="advanced span-2"><summary>Ejemplos, exclusiones y condiciones</summary><div class="form-grid">
+    <label class="span-2">Situaciones que incluye<textarea name="optionInclude" [(ngModel)]="model.includeContext" rows="2"></textarea></label>
+    <label class="span-2">Situaciones que excluye<textarea name="optionExclude" [(ngModel)]="model.excludeContext" rows="2"></textarea></label>
+    <label>Disponible después de<select name="optionParent" [(ngModel)]="model.dependsOnDimensionCode" (ngModelChange)="model.dependsOnOptionCode=null"><option [ngValue]="null">Siempre</option>@if (model.dependsOnDimensionCode && !parentAvailable()) { <option [value]="model.dependsOnDimensionCode">{{model.dependsOnDimensionCode}} (guardada anteriormente)</option> }@for (d of dependencies(); track d.id) { <option [value]="d.code">{{d.name}}</option> }</select></label>
+    @if (model.dependsOnDimensionCode) { <label>Cuando la respuesta anterior sea<select name="optionParentChoice" [(ngModel)]="model.dependsOnOptionCode"><option [ngValue]="null">Cualquier respuesta</option>@for (o of parentOptions(); track o.id) { <option [value]="o.code">{{o.name}}</option> }</select></label> }
+    <label>Orden de presentación<input name="optionPriority" type="number" [(ngModel)]="model.priority"></label>
+    <label>Identificador estable<input name="optionCode" [(ngModel)]="model.code" [readonly]="!!model.id" (input)="customCode=true" required></label>
+  </div></details>
+  <div class="actions span-2"><button class="btn btn-primary">Guardar respuesta</button></div>
+</fieldset></form>

@@ -1,0 +1,102 @@
+<header class="page-header"><div><p class="eyebrow">Configuración de envíos</p><h1>Conecta tus solicitudes con el CRM</h1><p class="muted">Usa los datos de Business Knowledge para elegir qué guardar y qué equipo debe atenderlo.</p></div></header>
+@if (error()) { <p class="alert error" role="alert">{{error()}}</p> }
+@if (info()) { <p class="notice success" role="status">{{info()}}</p> }
+@if (knowledge.error()) { <p class="alert error" role="alert">{{knowledge.error()}} <button type="button" class="link" (click)="knowledge.load()">Reintentar</button></p> }
+<section class="panel workflow-context" aria-label="Contexto de configuración">
+  <div class="form-grid">
+    <label>Perfil de solicitudes<select name="contextProfile" [disabled]="locked() || knowledge.loading()" [ngModel]="knowledge.profileCode()" (ngModelChange)="selectProfile($event)">
+      <option value="">Selecciona un perfil…</option>@for (p of knowledge.profiles(); track p.id) { <option [value]="p.code">{{p.name}}{{p.active ? '' : ' (inactivo)'}}</option> }
+    </select></label>
+    <label>Conexión CRM<select name="contextConnection" [disabled]="locked()" [ngModel]="selectedIntegrationId" (ngModelChange)="selectIntegration($event)">
+      <option [ngValue]="undefined">Selecciona una conexión…</option>@for (i of integrations(); track i.id) { <option [ngValue]="i.id">{{i.name}}{{i.active ? '' : ' (inactiva)'}}</option> }
+    </select></label>
+    <label>Acción al recibir una solicitud<select name="contextOperation" [disabled]="locked() || operationsLoading() || !selectedIntegrationId" [ngModel]="selectedOperation?.id" (ngModelChange)="editOperation($event)">
+      <option [ngValue]="undefined">{{operationsLoading() ? 'Cargando acciones…' : 'Selecciona una acción…'}}</option>@for (o of operations(); track o.id) { <option [ngValue]="o.id">{{operationName(o)}}{{o.active ? '' : ' (inactiva)'}}</option> }
+    </select></label>
+  </div>
+  @if (knowledge.loading()) { <p role="status" class="context-status">Cargando tus dimensiones y opciones…</p> }
+  @else { <p class="context-status">{{knowledge.dimensions().length}} dimensiones disponibles del perfil. Los perfiles que usan la misma acción comparten sus vínculos.</p> }
+</section>
+<nav class="workflow-nav" aria-label="Pasos de configuración">
+  @for (s of steps; track s.key) { <button type="button" [class.current]="step() === s.key" [attr.aria-current]="step() === s.key ? 'step' : null" [disabled]="locked() || (s.key !== 'connection' && !selectedOperation)" (click)="navigate(s.key)">{{s.label}}</button> }
+  <button type="button" [class.current]="step() === 'routes'" [disabled]="locked()" (click)="openRoutes()">Rutas de envío</button>
+  <button type="button" [class.current]="step() === 'history'" [disabled]="locked()" (click)="navigate('history')">Historial</button>
+</nav>
+@if (step() === 'connection') {
+  <section class="panel">
+    <div class="panel-title"><div><h2>Conexión con el CRM</h2><p class="muted">La conexión se configura una vez. Después trabajarás con sus campos y equipos.</p></div><button type="button" class="btn btn-secondary" [disabled]="locked()" (click)="newIntegration()">Nueva conexión</button></div>
+    @if (selectedIntegrationId && !connectionEditor) {
+      <div class="preview-card"><h3>{{integrationForm.name}}</h3><p>{{integrationForm.baseUrl}}</p><p>{{integrationForm.active ? 'Conexión habilitada' : 'Conexión deshabilitada'}}</p>
+        <button type="button" class="btn btn-secondary" [disabled]="locked()" (click)="connectionEditor=true">Editar conexión</button>
+      </div>
+    } @else {
+      <form (ngSubmit)="saveIntegration()"><fieldset class="form-grid" [disabled]="locked()">
+        <label>Nombre de la conexión<input name="connectionName" [(ngModel)]="integrationForm.name" required></label>
+        <label>Dirección del servidor CRM<input name="connectionUrl" [(ngModel)]="integrationForm.baseUrl" placeholder="https://crm.ejemplo.com" required></label>
+        <label class="span-2">Credencial configurada en el servidor<input name="connectionSecret" [(ngModel)]="integrationForm.secretRef" placeholder="ENV:ESPOCRM_API_KEY"><small>Introduce la referencia de la credencial. La clave real se configura en el servidor.</small></label>
+        <details class="advanced span-2"><summary>Configuración técnica de la conexión</summary><div class="form-grid">
+          <label>Código interno<input name="connectionCode" [(ngModel)]="integrationForm.code" required></label>
+          <label>Autenticación<select name="connectionAuth" [(ngModel)]="integrationForm.authType"><option>NONE</option><option>API_KEY_HEADER</option><option>BEARER</option><option>BASIC</option><option>OAUTH2_CLIENT_CREDENTIALS</option></select></label>
+          @if (integrationForm.authType === 'API_KEY_HEADER') { <label>Nombre de la cabecera de clave<input name="apiHeader" [(ngModel)]="integrationForm.apiKeyName"></label> }
+          @if (integrationForm.authType === 'BASIC' || integrationForm.authType === 'OAUTH2_CLIENT_CREDENTIALS') { <label>Referencia de usuario / cliente<input name="usernameRef" [(ngModel)]="integrationForm.usernameRef"></label> }
+          @if (integrationForm.authType === 'OAUTH2_CLIENT_CREDENTIALS') { <label>Dirección del servidor OAuth<input name="tokenUrl" [(ngModel)]="integrationForm.tokenUrl"></label><label>Ámbito OAuth<input name="scope" [(ngModel)]="integrationForm.scope"></label> }
+          <label class="span-2">Cabeceras adicionales JSON<textarea name="baseHeaders" [(ngModel)]="integrationForm.defaultHeadersJson" rows="3"></textarea></label>
+          <label class="check"><input name="connectionActive" type="checkbox" [(ngModel)]="integrationForm.active"> Habilitada</label>
+          @if (integrationForm.id) { <button type="button" class="btn btn-danger" (click)="deleteIntegration()">Eliminar conexión</button> }
+        </div></details>
+        <div class="actions span-2"><button class="btn btn-primary">Guardar conexión</button>@if (selectedIntegrationId) { <button type="button" class="btn btn-secondary" (click)="connectionEditor=false">Cerrar edición</button> }</div>
+      </fieldset></form>
+    }
+    @if (selectedIntegrationId && !operationsLoading() && !operations().length && isEspo()) {
+      <div class="notice lower"><p>Prepara la acción para crear casos en EspoCRM. El título, la descripción y los parámetros de conexión se completan automáticamente.</p><button type="button" class="btn btn-primary" [disabled]="locked()" (click)="prepareEspo()">Preparar creación de casos</button></div>
+    }
+    @if (selectedIntegrationId) {
+      <details class="advanced lower" [open]="operationEditor"><summary>Configuración técnica de las acciones</summary>
+        <div class="actions"><button type="button" class="btn btn-secondary" [disabled]="locked()" (click)="newOperation()">Nueva acción</button></div>
+        <form (ngSubmit)="saveOperation()"><fieldset class="form-grid lower" [disabled]="locked()">
+          <label>Código<input name="operationCode" [(ngModel)]="operationForm.code" required></label>
+          <label>Método<select name="operationMethod" [(ngModel)]="operationForm.httpMethod"><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>GET</option></select></label>
+          <label>Ruta HTTP<input name="operationPath" [(ngModel)]="operationForm.pathTemplate" required></label>
+          <label>Tipo de contenido<input name="operationContent" [(ngModel)]="operationForm.contentType"></label>
+          <label class="span-2">Plantilla JSON<textarea name="operationBody" [(ngModel)]="operationForm.bodyTemplate" rows="7"></textarea></label>
+          <label class="span-2">Cabeceras JSON<textarea name="operationHeaders" [(ngModel)]="operationForm.headersTemplateJson" rows="2"></textarea></label>
+          <label>Estados HTTP de éxito<input name="operationStatuses" [(ngModel)]="operationForm.successStatusCodes"></label>
+          <label>Ruta del identificador en la respuesta<input name="operationExternalId" [(ngModel)]="operationForm.externalIdPath"></label>
+          <label>Ruta del número de caso para el cliente<input name="operationExternalNumber" [(ngModel)]="operationForm.externalNumberPath" placeholder="number"><small>En EspoCRM corresponde a Number. El ID técnico se conserva por separado.</small></label>
+          <label>Tiempo máximo (ms)<input name="operationTimeout" type="number" [(ngModel)]="operationForm.timeoutMs"></label>
+          <label>Intentos<input name="operationAttempts" type="number" [(ngModel)]="operationForm.maxAttempts"></label>
+          <label>Espera entre intentos (ms)<input name="operationRetry" type="number" [(ngModel)]="operationForm.retryDelayMs"></label>
+          <label class="check"><input name="operationActive" type="checkbox" [(ngModel)]="operationForm.active"> Acción habilitada</label>
+          <div class="actions span-2"><button class="btn btn-primary">Guardar acción</button>@if (operationForm.id) { <button type="button" class="btn btn-danger" (click)="deleteOperation()">Eliminar acción</button> }</div>
+        </fieldset></form>
+      </details>
+    }
+  </section>
+}
+<app-crm-mapping [hidden]="!['fields','teams','preview','history'].includes(step())" [section]="step()"
+  [operationId]="selectedOperation?.id" [integrationId]="selectedIntegrationId" [operationCode]="selectedOperation?.code || ''" [operationPath]="selectedOperation?.pathTemplate || ''" [isEspo]="isEspo()"></app-crm-mapping>
+@if (step() === 'routes') {
+  <section class="panel"><h2>¿A qué conexión se envía este perfil?</h2>
+    <p class="muted">Para repartir casos entre áreas de un mismo CRM, utiliza el paso Equipos. Aquí eliges otra conexión o acción según el resultado.</p>
+    <button type="button" class="btn btn-primary" [disabled]="locked() || !selectedOperation || !knowledge.profileCode()" (click)="useForProfile()">Usar la conexión seleccionada como destino general</button>
+    <div class="table-wrap lower"><table><thead><tr><th>Cuándo</th><th>Enviar a</th><th>Estado</th><th></th></tr></thead><tbody>
+      @for (route of profileRoutes(); track route.id) { <tr><td>{{route.dimensionCode ? knowledge.dimensionName(route.dimensionCode) : 'Todas las solicitudes'}}{{route.optionCode ? ' = ' + knowledge.optionName(route.dimensionCode,route.optionCode) : ''}}</td><td>{{integrationName(route.integrationCode)}}</td><td>{{route.active ? 'Activa' : 'Inactiva'}}</td><td><button type="button" class="link" [disabled]="locked()" (click)="editRoute(route)">Editar</button></td></tr> }
+      @empty { <tr><td colspan="4">Este perfil no tiene una ruta. Puedes guardar un destino general con el botón anterior.</td></tr> }
+    </tbody></table></div>
+    <h3>{{routeForm.id ? 'Editar ruta' : 'Añadir una ruta'}}</h3>
+    <form (ngSubmit)="saveRoute()"><fieldset class="form-grid" [disabled]="locked() || knowledge.loading()">
+      <label>Cuando la dimensión sea<select name="routeDimension" [ngModel]="routeForm.dimensionCode" (ngModelChange)="changeRouteDimension($event)">
+        <option value="">Cualquier resultado (ruta general)</option>@for (d of knowledge.dimensions(); track d.id) { <option [value]="d.code">{{d.name}}</option> }
+      </select></label>
+      @if (routeForm.dimensionCode) { <label>Con la opción<select name="routeOption" [(ngModel)]="routeForm.optionCode"><option value="">Cualquier opción de esa dimensión</option>@for (o of knowledge.choices(routeForm.dimensionCode); track o.id) { <option [value]="o.code">{{o.name}}</option> }</select></label> }
+      <label>Enviar a<select name="routeConnection" [(ngModel)]="routeForm.integrationCode" (ngModelChange)="loadRouteOperations()" required><option value="">Selecciona una conexión…</option>@for (i of integrations(); track i.id) { <option [value]="i.code">{{i.name}}{{i.active ? '' : ' (inactiva)'}}</option> }</select></label>
+      <label>Acción<select name="routeAction" [(ngModel)]="routeForm.operationCode" required [disabled]="routeLoading()"><option value="">Selecciona una acción…</option>@for (o of routeOperations(); track o.id) { <option [value]="o.code">{{operationName(o)}}{{o.active ? '' : ' (inactiva)'}}</option> }</select></label>
+      <details class="advanced span-2"><summary>Prioridad y estado</summary><div class="form-grid"><label>Orden de evaluación (menor primero)<input name="routePriority" type="number" [(ngModel)]="routeForm.priority"></label><label class="check"><input name="routeActive" type="checkbox" [(ngModel)]="routeForm.active"> Ruta activa</label></div><p class="muted hint">Las condiciones específicas deben evaluarse antes que la ruta general.</p></details>
+      <div class="actions span-2"><button class="btn btn-primary" [disabled]="routeLoading() || !knowledge.profileCode()">Guardar ruta</button><button type="button" class="btn btn-secondary" (click)="newRoute()">Nueva</button>@if (routeForm.id) { <button type="button" class="btn btn-danger" (click)="deleteRoute()">Quitar ruta</button> }</div>
+    </fieldset></form>
+  </section>
+}
+<div class="workflow-footer" [hidden]="['routes','history'].includes(step())">
+  <button type="button" class="btn btn-secondary" [disabled]="locked() || step() === 'connection'" (click)="previous()">Anterior</button>
+  @if (step() !== 'preview' && step() !== 'routes' && step() !== 'history') { <button type="button" class="btn btn-primary" [disabled]="locked() || !selectedOperation" (click)="next()">Continuar</button> }
+</div>

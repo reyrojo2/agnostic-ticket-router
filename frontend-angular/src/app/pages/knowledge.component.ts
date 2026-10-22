@@ -1,188 +1,155 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NgIf } from '@angular/common';
+import { RouterLink } from '@angular/router';
+import { Observable, finalize, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../core/api.service';
+import { KnowledgeProfile, KnowledgeDimension, KnowledgeOption, KnowledgeRule } from '../core/knowledge-models';
+import { KnowledgeProfileEditorComponent, KnowledgeDimensionEditorComponent, KnowledgeOptionEditorComponent, KnowledgeRuleEditorComponent } from './knowledge-editors.component';
 
 @Component({
-  standalone: true,
-  imports: [FormsModule, NgIf],
-  template: `
-    <header class="page-header">
-      <div><p class="eyebrow">Motor configurable</p><h1>Business Knowledge</h1><p class="muted">El motor no conoce productos ni rubros: consume perfiles, dimensiones, opciones y reglas.</p></div>
-    </header>
-
-    <div *ngIf="loadError()" class="alert error" role="alert">{{ loadError() }} <button type="button" class="btn btn-secondary" (click)="loadProfiles()">Reintentar</button></div>
-    <div class="two-column">
-      <section class="panel">
-        <div class="panel-title"><h2>Perfiles</h2><button class="btn btn-secondary" (click)="newProfile()">Nuevo</button></div>
-        <div class="list">
-          @for (profile of profiles(); track profile.id) {
-            <button class="list-row" [class.selected]="profile.id === selectedProfileId" (click)="selectProfile(profile)">
-              <span><strong>{{ profile.name }}</strong><small>{{ profile.code }} · v{{ profile.version }}</small></span>
-              <span class="badge" [class.off]="!profile.active">{{ profile.active ? 'Activo' : 'Inactivo' }}</span>
-            </button>
-          }
-        </div>
-        <form class="form-grid" (ngSubmit)="saveProfile()">
-          <label>Código<input name="pcode" [(ngModel)]="profileForm.code" required></label>
-          <label>Nombre<input name="pname" [(ngModel)]="profileForm.name" required></label>
-          <label>Versión<input name="pversion" [(ngModel)]="profileForm.version" type="number"></label>
-          <label class="check"><input name="pactive" [(ngModel)]="profileForm.active" type="checkbox"> Activo</label>
-          <div class="actions"><button class="btn btn-primary">Guardar perfil</button>@if(profileForm.id){<button type="button" class="btn btn-danger" (click)="deleteProfile()">Eliminar</button>}</div>
-        </form>
-      </section>
-
-      <section class="panel">
-        <div class="panel-title"><h2>Dimensiones</h2><button class="btn btn-secondary" [disabled]="!selectedProfileId" (click)="newDimension()">Nueva</button></div>
-        @if (!selectedProfileId) { <p class="empty">Selecciona un perfil.</p> }
-        <div class="list compact">
-          @for (dimension of dimensions(); track dimension.id) {
-            <button class="list-row" [class.selected]="dimension.id === selectedDimensionId" (click)="selectDimension(dimension)">
-              <span><strong>{{ dimension.executionOrder }}. {{ dimension.name }}</strong><small>{{ dimension.code }} · {{ dimension.primitiveType }}</small></span>
-              <span class="badge">{{ dimension.required ? 'Obligatoria' : 'Opcional' }}</span>
-            </button>
-          }
-        </div>
-        @if (selectedProfileId) {
-          <form class="form-grid" (ngSubmit)="saveDimension()">
-            <label>Código<input name="dcode" [(ngModel)]="dimensionForm.code" required></label>
-            <label>Nombre<input name="dname" [(ngModel)]="dimensionForm.name" required></label>
-            <label>Tipo<select name="dtype" [(ngModel)]="dimensionForm.primitiveType"><option>CHOICE</option><option>SCORE</option><option>NOUL</option></select></label>
-            <label>Orden<input name="dorder" [(ngModel)]="dimensionForm.executionOrder" type="number"></label>
-            <label class="span-2">Instrucción<input name="dinstructions" [(ngModel)]="dimensionForm.instructions" required></label>
-            <label>Prob. automática<input name="dprob" [(ngModel)]="dimensionForm.autoMinProbability" type="number" step="0.01"></label>
-            <label>Margen mínimo<input name="dmargin" [(ngModel)]="dimensionForm.minMargin" type="number" step="0.01"></label>
-            <label>Depende de dimensión<input name="ddep" [(ngModel)]="dimensionForm.dependsOnDimensionCode"></label>
-            <label>Opción padre<input name="dopt" [(ngModel)]="dimensionForm.dependsOnOptionCode"></label>
-            <label class="check"><input name="drequired" [(ngModel)]="dimensionForm.required" type="checkbox"> Obligatoria</label>
-            <label class="check"><input name="dactive" [(ngModel)]="dimensionForm.active" type="checkbox"> Activa</label>
-            <div class="actions span-2"><button class="btn btn-primary">Guardar dimensión</button>@if(dimensionForm.id){<button type="button" class="btn btn-danger" (click)="deleteDimension()">Eliminar</button>}</div>
-          </form>
-        }
-      </section>
-    </div>
-
-    @if (selectedDimensionId) {
-      <div class="two-column lower">
-        <section class="panel">
-          <div class="panel-title"><h2>Opciones</h2><button class="btn btn-secondary" (click)="newOption()">Nueva</button></div>
-          <div class="list compact">
-            @for (option of options(); track option.id) {
-              <button class="list-row" [class.selected]="option.id === optionForm.id" (click)="editOption(option)"><span><strong>{{ option.name }}</strong><small>{{ option.code }}</small></span><span>{{ option.priority }}</span></button>
-            }
-          </div>
-          <form class="form-grid" (ngSubmit)="saveOption()">
-            <label>Código<input name="ocode" [(ngModel)]="optionForm.code" required></label>
-            <label>Nombre<input name="oname" [(ngModel)]="optionForm.name" required></label>
-            <label class="span-2">Descripción<textarea name="odesc" [(ngModel)]="optionForm.description" rows="3" required></textarea></label>
-            <label class="span-2">Incluye<textarea name="oinclude" [(ngModel)]="optionForm.includeContext" rows="2"></textarea></label>
-            <label class="span-2">Excluye<textarea name="oexclude" [(ngModel)]="optionForm.excludeContext" rows="2"></textarea></label>
-            <label>Prioridad<input name="opriority" [(ngModel)]="optionForm.priority" type="number"></label>
-            <label class="check"><input name="oactive" [(ngModel)]="optionForm.active" type="checkbox"> Activa</label>
-            <div class="actions span-2"><button class="btn btn-primary">Guardar opción</button>@if(optionForm.id){<button type="button" class="btn btn-danger" (click)="deleteOption()">Eliminar</button>}</div>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="panel-title"><h2>Reglas</h2><button class="btn btn-secondary" (click)="newRule()">Nueva</button></div>
-          <div class="list compact">
-            @for (rule of rules(); track rule.id) {
-              <button class="list-row" [class.selected]="rule.id === ruleForm.id" (click)="editRule(rule)"><span><strong>{{ rule.code }}</strong><small>{{ rule.strength }} → {{ rule.targetOptionCode }}</small></span><span>{{ rule.ruleType }}</span></button>
-            }
-          </div>
-          <form class="form-grid" (ngSubmit)="saveRule()">
-            <label>Código<input name="rcode" [(ngModel)]="ruleForm.code" required></label>
-            <label>Opción destino<input name="rtarget" [(ngModel)]="ruleForm.targetOptionCode" required></label>
-            <label>Tipo<select name="rtype" [(ngModel)]="ruleForm.ruleType"><option>CONTAINS_ANY</option><option>CONTAINS_ALL</option><option>REGEX</option></select></label>
-            <label>Fuerza<select name="rstrength" [(ngModel)]="ruleForm.strength"><option>SOFT</option><option>HARD</option></select></label>
-            <label class="span-2">Patrón<textarea name="rpattern" [(ngModel)]="ruleForm.pattern" rows="3" required></textarea></label>
-            <label>Prioridad<input name="rpriority" [(ngModel)]="ruleForm.priority" type="number"></label>
-            <label class="check"><input name="ractive" [(ngModel)]="ruleForm.active" type="checkbox"> Activa</label>
-            <div class="actions span-2"><button class="btn btn-primary">Guardar regla</button>@if(ruleForm.id){<button type="button" class="btn btn-danger" (click)="deleteRule()">Eliminar</button>}</div>
-          </form>
-        </section>
-      </div>
-    }
-  `
+  standalone: true, imports: [FormsModule, RouterLink, KnowledgeProfileEditorComponent, KnowledgeDimensionEditorComponent, KnowledgeOptionEditorComponent, KnowledgeRuleEditorComponent],
+  templateUrl: './knowledge.component.html', styleUrls: ['./crm-workflow.css']
 })
 export class KnowledgeComponent implements OnInit {
-  loadError = signal('');
-  profiles = signal<any[]>([]);
-  dimensions = signal<any[]>([]);
-  options = signal<any[]>([]);
-  rules = signal<any[]>([]);
-  selectedProfileId?: number;
-  selectedDimensionId?: number;
-
-  profileForm: any = this.profileDefaults();
-  dimensionForm: any = this.dimensionDefaults();
-  optionForm: any = this.optionDefaults();
-  ruleForm: any = this.ruleDefaults();
-
+  readonly profiles = signal<KnowledgeProfile[]>([]);
+  readonly dimensions = signal<KnowledgeDimension[]>([]);
+  readonly allOptions = signal<Record<string, KnowledgeOption[]>>({});
+  readonly rules = signal<KnowledgeRule[]>([]);
+  readonly busy = signal(false);
+  readonly loading = signal(false);
+  readonly rulesLoading = signal(false);
+  readonly error = signal('');
+  readonly info = signal('');
+  readonly step = signal('profile');
+  readonly steps = [{ key: 'profile', label: '1. Perfil' }, { key: 'decisions', label: '2. Decisiones' }, { key: 'answers', label: '3. Respuestas' }, { key: 'rules', label: '4. Reglas' }];
+  selectedProfile?: KnowledgeProfile;
+  selectedDimension?: KnowledgeDimension;
+  profileForm = this.profileDefaults();
+  dimensionForm = this.dimensionDefaults();
+  optionForm = this.optionDefaults();
+  ruleForm = this.ruleDefaults();
+  profileEditor = false;
+  dimensionEditor = false;
+  optionEditor = false;
+  ruleEditor = false;
+  private profileGeneration = 0;
+  private dimensionGeneration = 0;
   constructor(private readonly api: ApiService) {}
-
   ngOnInit(): void { this.loadProfiles(); }
-
-  loadProfiles(): void {
-    this.loadError.set('');
+  locked(): boolean { return this.busy() || this.loading(); }
+  profileCodes(): string[] { return this.profiles().map(p => p.code); }
+  choices(): KnowledgeOption[] { return this.allOptions()[this.selectedDimension?.code ?? ''] ?? []; }
+  navigate(step: string): void { if (!this.locked()) { this.step.set(step); this.error.set(''); this.info.set(''); } }
+  next(): void { const i = this.steps.findIndex(s => s.key === this.step()); if (i >= 0 && i < 3) this.navigate(this.steps[i + 1].key); }
+  previous(): void { const i = this.steps.findIndex(s => s.key === this.step()); if (i > 0) this.navigate(this.steps[i - 1].key); }
+  loadProfiles(preferredId?: number): void {
+    this.loading.set(true); this.error.set('');
     this.api.profiles().subscribe({
-      next: data => { this.profiles.set(data); },
-      error: err => { this.loadError.set(`No se pudieron obtener perfiles (HTTP ${err.status || 'sin conexión'}). Revisa sesión, proxy y logs de Business Knowledge.`); }
+      next: profiles => {
+        this.profiles.set(profiles); this.loading.set(false);
+        const selected = profiles.find(p => p.id === (preferredId ?? this.selectedProfile?.id)) ?? profiles.find(p => p.active) ?? profiles[0];
+        if (selected) this.selectProfile(selected.id); else { this.selectedProfile = undefined; this.newProfile(); }
+      }, error: e => { this.loading.set(false); this.fail(e); }
     });
   }
-  selectProfile(profile: any): void {
-    this.selectedProfileId = profile.id;
-    this.profileForm = { ...profile };
-    this.selectedDimensionId = undefined;
-    this.options.set([]);
+  selectProfile(id: number | undefined): void {
+    const profile = this.profiles().find(p => p.id === id);
+    if (!profile) return;
+    this.selectedProfile = profile; this.profileForm = { ...profile }; this.profileEditor = false;
+    this.selectedDimension = undefined; this.dimensionGeneration++; this.dimensions.set([]); this.allOptions.set({}); this.rules.set([]);
+    this.dimensionEditor = false; this.optionEditor = false; this.ruleEditor = false; this.loadDimensions();
+  }
+  private loadDimensions(preferredId?: number): void {
+    if (!this.selectedProfile?.id) return;
+    const generation = ++this.profileGeneration;
+    this.loading.set(true);
+    this.api.dimensions(this.selectedProfile.id).pipe(switchMap((dimensions: KnowledgeDimension[]) => {
+      const requests = dimensions.map(d => this.api.options(d.id!));
+      return (requests.length ? forkJoin(requests) : of([])).pipe(map(options => ({ dimensions, options })));
+    })).subscribe({
+      next: result => {
+        if (generation !== this.profileGeneration) return;
+        this.dimensions.set(result.dimensions); this.allOptions.set(Object.fromEntries(result.dimensions.map((d, i) => [d.code, result.options[i] ?? []])));
+        this.loading.set(false);
+        const d = result.dimensions.find(d => d.id === (preferredId ?? this.selectedDimension?.id)) ?? result.dimensions.find(d => d.active) ?? result.dimensions[0];
+        if (d) this.selectDimension(d.id); else { this.selectedDimension = undefined; this.rules.set([]); }
+      }, error: e => { if (generation === this.profileGeneration) { this.loading.set(false); this.fail(e); } }
+    });
+  }
+  selectDimension(id: number | undefined): void {
+    const dimension = this.dimensions().find(d => d.id === id);
+    if (!dimension) return;
+    this.selectedDimension = dimension; this.dimensionForm = { ...dimension };
+    this.dimensionEditor = false; this.optionEditor = false; this.ruleEditor = false; this.loadRules();
+  }
+  private loadRules(): void {
+    const generation = ++this.dimensionGeneration;
     this.rules.set([]);
-    this.api.dimensions(profile.id).subscribe(data => this.dimensions.set(data));
+    if (!this.selectedDimension?.id) { this.rulesLoading.set(false); return; }
+    this.rulesLoading.set(true);
+    this.api.rules(this.selectedDimension.id).subscribe({
+      next: rules => { if (generation === this.dimensionGeneration) { this.rules.set(rules); this.rulesLoading.set(false); } },
+      error: e => { if (generation === this.dimensionGeneration) { this.rulesLoading.set(false); this.fail(e); } }
+    });
   }
-  newProfile(): void { this.profileForm = this.profileDefaults(); }
+  newProfile(): void { this.profileForm = this.profileDefaults(); this.profileEditor = true; this.step.set('profile'); }
+  editProfile(): void { if (this.selectedProfile) { this.profileForm = { ...this.selectedProfile }; this.profileEditor = true; } }
   saveProfile(): void {
-    const call = this.profileForm.id ? this.api.updateProfile(this.profileForm.id, this.profileForm) : this.api.createProfile(this.profileForm);
-    call.subscribe(() => this.loadProfiles());
+    const request = this.profileForm.id ? this.api.updateProfile(this.profileForm.id, this.profileForm) : this.api.createProfile(this.profileForm);
+    this.mutate(request, (saved: KnowledgeProfile) => { this.profileEditor = false; this.loadProfiles(saved.id); this.info.set('Perfil guardado. Continúa con las decisiones.'); });
   }
-  deleteProfile(): void { if (this.profileForm.id) this.api.deleteProfile(this.profileForm.id).subscribe(() => { this.selectedProfileId = undefined; this.dimensions.set([]); this.newProfile(); this.loadProfiles(); }); }
-
-  selectDimension(dimension: any): void {
-    this.selectedDimensionId = dimension.id;
-    this.dimensionForm = { ...dimension };
-    this.loadOptionsAndRules();
+  deleteProfile(): void {
+    if (!this.selectedProfile?.id || !window.confirm('¿Eliminar el perfil «' + this.selectedProfile.name + '»? Si tiene decisiones, elimina primero sus datos o deshabilítalo.')) return;
+    this.mutate(this.api.deleteProfile(this.selectedProfile.id), () => { this.selectedProfile = undefined; this.selectedDimension = undefined; this.loadProfiles(); });
   }
-  newDimension(): void { this.selectedDimensionId = undefined; this.dimensionForm = this.dimensionDefaults(); this.options.set([]); this.rules.set([]); }
+  newDimension(): void { this.dimensionForm = this.dimensionDefaults(Math.max(0, ...this.dimensions().map(d => d.executionOrder)) + 10); this.dimensionEditor = true; }
+  editDimension(dimension: KnowledgeDimension): void { this.dimensionForm = { ...dimension }; this.dimensionEditor = true; }
   saveDimension(): void {
-    if (!this.selectedProfileId) return;
-    const call = this.dimensionForm.id ? this.api.updateDimension(this.dimensionForm.id, this.dimensionForm) : this.api.createDimension(this.selectedProfileId, this.dimensionForm);
-    call.subscribe((saved: any) => { this.api.dimensions(this.selectedProfileId!).subscribe(data => this.dimensions.set(data)); this.selectDimension(saved); });
+    if (!this.selectedProfile?.id) return;
+    const request = this.dimensionForm.id ? this.api.updateDimension(this.dimensionForm.id, this.dimensionForm) : this.api.createDimension(this.selectedProfile.id, this.dimensionForm);
+    this.mutate(request, (saved: KnowledgeDimension) => { this.dimensionEditor = false; this.loadDimensions(saved.id); this.info.set('Decisión guardada. Configura sus respuestas en el siguiente paso.'); });
   }
-  deleteDimension(): void { if(this.dimensionForm.id) this.api.deleteDimension(this.dimensionForm.id).subscribe(() => { this.selectedDimensionId=undefined; this.options.set([]); this.rules.set([]); this.api.dimensions(this.selectedProfileId!).subscribe(data=>this.dimensions.set(data)); this.dimensionForm=this.dimensionDefaults(); }); }
-
-  loadOptionsAndRules(): void {
-    if (!this.selectedDimensionId) return;
-    this.api.options(this.selectedDimensionId).subscribe(data => this.options.set(data));
-    this.api.rules(this.selectedDimensionId).subscribe(data => this.rules.set(data));
+  deleteDimension(dimension: KnowledgeDimension): void {
+    if (!dimension.id || !window.confirm('¿Eliminar «' + dimension.name + '» y sus respuestas y reglas? Los mapeos externos que usen su código deberán revisarse.')) return;
+    this.mutate(this.api.deleteDimension(dimension.id), () => { this.selectedDimension = undefined; this.dimensionEditor = false; this.loadDimensions(); });
   }
-  newOption(): void { this.optionForm = this.optionDefaults(); }
-  editOption(option: any): void { this.optionForm = { ...option }; }
+  newOption(): void { this.optionForm = this.optionDefaults(); this.optionEditor = true; }
+  editOption(option: KnowledgeOption): void { this.optionForm = { ...option }; this.optionEditor = true; }
   saveOption(): void {
-    if (!this.selectedDimensionId) return;
-    const call = this.optionForm.id ? this.api.updateOption(this.optionForm.id, this.optionForm) : this.api.createOption(this.selectedDimensionId, this.optionForm);
-    call.subscribe(() => { this.newOption(); this.loadOptionsAndRules(); });
+    if (!this.selectedDimension?.id) return;
+    const dimension = this.selectedDimension;
+    const request = this.optionForm.id ? this.api.updateOption(this.optionForm.id, this.optionForm) : this.api.createOption(dimension.id!, this.optionForm);
+    this.mutate(request, (saved: KnowledgeOption) => {
+      this.allOptions.update(all => ({ ...all, [dimension.code]: [...(all[dimension.code] ?? []).filter(o => o.id !== saved.id), saved].sort((a, b) => a.priority - b.priority) }));
+      this.optionEditor = false; this.info.set('Respuesta guardada.');
+    });
   }
-  deleteOption(): void { if(this.optionForm.id) this.api.deleteOption(this.optionForm.id).subscribe(() => { this.newOption(); this.loadOptionsAndRules(); }); }
-
-  newRule(): void { this.ruleForm = this.ruleDefaults(); }
-  editRule(rule: any): void { this.ruleForm = { ...rule }; }
+  deleteOption(option: KnowledgeOption): void {
+    if (!option.id || !window.confirm('¿Eliminar la respuesta «' + option.name + '»? Revisa las reglas y asignaciones que la utilicen.')) return;
+    const code = this.selectedDimension!.code;
+    this.mutate(this.api.deleteOption(option.id), () => { this.allOptions.update(all => ({ ...all, [code]: all[code].filter(o => o.id !== option.id) })); this.optionEditor = false; });
+  }
+  newRule(): void { this.ruleForm = this.ruleDefaults(); this.ruleEditor = true; }
+  editRule(rule: KnowledgeRule): void { this.ruleForm = { ...rule }; this.ruleEditor = true; }
   saveRule(): void {
-    if (!this.selectedDimensionId) return;
-    const call = this.ruleForm.id ? this.api.updateRule(this.ruleForm.id, this.ruleForm) : this.api.createRule(this.selectedDimensionId, this.ruleForm);
-    call.subscribe(() => { this.newRule(); this.loadOptionsAndRules(); });
+    if (!this.selectedDimension?.id) return;
+    const request = this.ruleForm.id ? this.api.updateRule(this.ruleForm.id, this.ruleForm) : this.api.createRule(this.selectedDimension.id, this.ruleForm);
+    this.mutate(request, () => { this.ruleEditor = false; this.loadRules(); this.info.set('Regla guardada.'); });
   }
-  deleteRule(): void { if(this.ruleForm.id) this.api.deleteRule(this.ruleForm.id).subscribe(() => { this.newRule(); this.loadOptionsAndRules(); }); }
-
-  private profileDefaults() { return { code:'', name:'', version:1, active:true }; }
-  private dimensionDefaults() { return { code:'', name:'', primitiveType:'CHOICE', instructions:'', executionOrder:100, required:true, autoMinProbability:.70, minMargin:.20, dependsOnDimensionCode:'', dependsOnOptionCode:'', active:true }; }
-  private optionDefaults() { return { code:'', name:'', description:'', includeContext:'', excludeContext:'', priority:100, dependsOnDimensionCode:'', dependsOnOptionCode:'', active:true }; }
-  private ruleDefaults() { return { code:'', targetOptionCode:'', ruleType:'CONTAINS_ANY', pattern:'', strength:'SOFT', priority:100, active:true }; }
+  deleteRule(rule: KnowledgeRule): void {
+    if (!rule.id || !window.confirm('¿Eliminar esta regla?')) return;
+    this.mutate(this.api.deleteRule(rule.id), () => { this.ruleEditor = false; this.loadRules(); });
+  }
+  optionName(code: string): string { return this.choices().find(o => o.code === code)?.name ?? code; }
+  ruleDescription(rule: KnowledgeRule): string { return ({ CONTAINS_ANY: 'Contiene alguna expresión', CONTAINS_ALL: 'Contiene todas las expresiones', REGEX: 'Coincide con un patrón avanzado' } as Record<string, string>)[rule.ruleType] ?? rule.ruleType; }
+  typeName(type: string): string { return ({ CHOICE: 'Elegir una respuesta', SCORE: 'Puntuación', NOUL: 'Sí o no' } as Record<string, string>)[type] ?? type; }
+  private mutate<T>(request: Observable<T>, next: (saved: T) => void): void {
+    this.busy.set(true); this.error.set(''); this.info.set('');
+    request.pipe(finalize(() => this.busy.set(false))).subscribe({ next, error: e => this.fail(e) });
+  }
+  private fail(e: any): void { this.error.set(e.error?.detail ?? 'No se pudo consultar o guardar la configuración (HTTP ' + e.status + ').'); }
+  private profileDefaults(): KnowledgeProfile { return { code: '', name: '', version: 1, active: true }; }
+  private dimensionDefaults(order = 100): KnowledgeDimension { return { code: '', name: '', primitiveType: 'CHOICE', instructions: '', executionOrder: order, required: true, autoMinProbability: .70, minMargin: .20, dependsOnDimensionCode: null, dependsOnOptionCode: null, active: true }; }
+  private optionDefaults(): KnowledgeOption { return { code: '', name: '', description: '', includeContext: '', excludeContext: '', priority: 100, dependsOnDimensionCode: null, dependsOnOptionCode: null, active: true }; }
+  private ruleDefaults(): KnowledgeRule { return { code: '', targetOptionCode: '', ruleType: 'CONTAINS_ANY', pattern: '', strength: 'SOFT', priority: 100, active: true }; }
 }

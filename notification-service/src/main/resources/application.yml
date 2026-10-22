@@ -27,6 +27,8 @@ spring:
     table: flyway_history_notification
 
 app:
+  notifications:
+    encryption-key: ${NOTIFICATION_ENCRYPTION_KEY:}
   security:
     jwt-secret: ${APP_JWT_SECRET}
     cors-origin: ${CORS_ORIGIN:http://localhost:4200}

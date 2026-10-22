@@ -1,220 +1,253 @@
-import { Component, Input, OnChanges, signal } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, SimpleChanges, effect, untracked, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
+import { catchError, concatMap, finalize, forkJoin, from, of, Subscription, tap, toArray, Observable } from 'rxjs';
 import { ApiService } from '../core/api.service';
-import { from } from 'rxjs';
-import { concatMap, toArray } from 'rxjs/operators';
+import { CrmKnowledgeService } from '../core/crm-knowledge.service';
 
-/** Configuration UI: never posts a real Case from its preview. */
 @Component({
-  selector: 'app-crm-mapping',
-  standalone: true,
-  imports: [FormsModule],
-  template: `
-    <section class="panel lower">
-      <div class="panel-title"><div><h2>Mapeo de clasificación al CRM</h2>
-        <p class="muted">1. Selecciona CREATE_CASE arriba. 2. Consulta los campos del CRM. 3. Vincula dimensiones y destinos. 4. Previsualiza y valida antes de crear casos reales.</p></div>
-      </div>
-      @if (error()) { <p class="alert error" role="alert">{{error()}}</p> }
-      @if (info()) { <p role="status">{{info()}}</p> }
-      @if (!operationId || !integrationId) {
-        <p>Selecciona primero una integración y después pulsa sobre la operación que quieras configurar.</p>
-      } @else {
-        <div class="actions">
-          <button type="button" class="btn btn-secondary" (click)="reload()">Actualizar configuración</button>
-          <button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="loadCatalog()">Leer campos y equipos de EspoCRM</button>
-          <button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="validate()">Validar compatibilidad</button>
-        </div>
-        @if (validation(); as v) {
-          <p><strong>Compatibilidad:</strong> {{v.compatible ? 'Compatible según los metadatos' : 'Requiere ajustes'}} · Entidad: {{v.entityType}}</p>
-          @for (message of v.errors; track message) { <p class="alert error">{{message}}</p> }
-          @for (message of v.warnings; track message) { <p class="muted">{{message}}</p> }
-        }
-        <div class="two-column">
-          <section>
-            <h3>Dimensiones → campos</h3>
-            <p class="muted">Los campos personalizados deben existir en EspoCRM. Puedes definir equivalencias: ejemplo, CAMBIO_RUC → Cambio de RUC.</p>
-            <div class="table-wrap"><table><thead><tr><th>Dimensión</th><th>Campo destino</th><th>Obligatorio</th><th></th></tr></thead><tbody>
-              @for (item of fields(); track item.id) {
-                <tr><td>{{item.dimensionCode}}</td><td>{{item.targetField}}</td><td>{{item.required?'Sí':'No'}}</td>
-                  <td><button type="button" class="link" (click)="editField(item)">Editar</button> · <button type="button" class="link" (click)="deleteField(item)">Quitar</button></td></tr>
-              }
-            </tbody></table></div>
-            <form class="form-grid" (ngSubmit)="saveField()">
-              <label>Dimensión<input name="mfDimension" [(ngModel)]="fieldForm.dimensionCode" placeholder="TIPO_GESTION" required></label>
-              <label>Campo API<input name="mfTarget" [(ngModel)]="fieldForm.targetField" placeholder="cTipologia" required></label>
-              @if (fieldNames().length) {
-                <label class="span-2">Campos disponibles (selecciona para rellenar)<select name="mfFieldSelected" [(ngModel)]="suggestedField" (ngModelChange)="fieldForm.targetField=$event">
-                  <option value="">Elegir campo...</option>
-                  @for (name of fieldNames(); track name) { <option [value]="name">{{name}}</option> }
-                </select></label>
-              }
-              <label class="span-2">Equivalencias de valores (JSON)<textarea name="mfValueMap" [(ngModel)]="fieldForm.valueMapJson" rows="3" class="mono" placeholder='{"BACKOFFICE":"Back Office"}'></textarea></label>
-              <label class="check"><input name="mfRequired" [(ngModel)]="fieldForm.required" type="checkbox"> Obligatorio</label>
-              <label class="check"><input name="mfActive" [(ngModel)]="fieldForm.active" type="checkbox"> Activo</label>
-              <div class="actions span-2"><button class="btn btn-primary" [disabled]="busy()">Guardar campo</button><button type="button" class="btn btn-secondary" (click)="resetField()">Nuevo</button></div>
-            </form>
-          </section>
-          <section>
-            <h3>Áreas y responsables</h3>
-            <p class="muted">DESTINO=BACKOFFICE no es un ID de equipo. Se debe vincular a un Team existente o crearlo explícitamente con la API.</p>
-            <div class="table-wrap"><table><thead><tr><th>Condición</th><th>Asignación</th><th></th></tr></thead><tbody>
-              @for (item of assignments(); track item.id) {
-                <tr><td>{{item.dimensionCode}}={{item.optionCode}}</td><td>{{item.assignmentKind}}: {{item.externalName || item.externalId}}</td>
-                  <td><button type="button" class="link" (click)="editAssignment(item)">Editar</button> · <button type="button" class="link" (click)="deleteAssignment(item)">Quitar</button></td></tr>
-              }
-            </tbody></table></div>
-            <form class="form-grid" (ngSubmit)="saveAssignment()">
-              <label>Dimensión<input name="maDimension" [(ngModel)]="assignmentForm.dimensionCode" required></label>
-              <label>Opción<input name="maOption" [(ngModel)]="assignmentForm.optionCode" required></label>
-              <label>Tipo<select name="maKind" [(ngModel)]="assignmentForm.assignmentKind"><option value="TEAM">Equipo</option><option value="USER">Responsable</option></select></label>
-              <label>ID externo<input name="maId" [(ngModel)]="assignmentForm.externalId" required placeholder="ID real de EspoCRM"></label>
-              @if (assignmentForm.assignmentKind === 'TEAM' && teams().length) {
-                <label class="span-2">Elegir equipo existente<select name="maTeam" [(ngModel)]="selectedTeamId" (ngModelChange)="chooseRecord($event,teams())"><option value="">Elegir equipo...</option>
-                  @for (t of teams(); track t.id) { <option [value]="t.id">{{t.name}} · {{t.id}}</option> }</select></label>
-              }
-              @if (assignmentForm.assignmentKind === 'USER' && users().length) {
-                <label class="span-2">Elegir usuario existente<select name="maUser" [(ngModel)]="selectedUserId" (ngModelChange)="chooseRecord($event,users())"><option value="">Elegir responsable...</option>
-                  @for (u of users(); track u.id) { <option [value]="u.id">{{u.name}} · {{u.id}}</option> }</select></label>
-              }
-              <label>Nombre visible<input name="maName" [(ngModel)]="assignmentForm.externalName"></label>
-              <label class="check"><input name="maActive" [(ngModel)]="assignmentForm.active" type="checkbox"> Activo</label>
-              <div class="actions span-2"><button class="btn btn-primary" [disabled]="busy()">Guardar asignación</button><button type="button" class="btn btn-secondary" (click)="resetAssignment()">Nueva</button></div>
-            </form>
-            <h3>Crear / vincular equipo mediante API</h3>
-            <p class="muted">Usa la dimensión y opción del formulario anterior. Si EspoCRM ya tiene un equipo con el mismo nombre, se reutiliza.</p>
-            <div class="form-grid"><label class="span-2">Nombre de equipo<input name="newTeamName" [(ngModel)]="newTeamName" placeholder="Back Office"></label></div>
-            <div class="actions"><button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="ensureTeam()">Crear o vincular equipo</button></div>
-            <h3>Importar equipos desde Business Knowledge</h3>
-            <p class="muted">Usa el perfil de la vista previa y la dimensión elegida. Se propondrá crear o reutilizar un equipo por cada opción activa (máximo 30). Confirma el listado antes de ejecutarlo.</p>
-            <div class="form-grid"><label class="span-2">Dimensión de áreas<input name="bulkDimension" [(ngModel)]="bulkDimension" placeholder="DESTINO"></label></div>
-            <div class="actions"><button type="button" class="btn btn-secondary" [disabled]="busy()" (click)="importTeamsFromKnowledge()">Sincronizar equipos de la dimensión</button></div>
-          </section>
-        </div>
-      }
-    </section>
-    <section class="panel lower">
-      <h2>Vista previa del JSON (sin crear caso)</h2>
-      <p class="muted">Usa un perfil y una clasificación de ejemplo. Se resuelve la ruta y se aplican exactamente los mismos mapeos que en un envío real.</p>
-      <form class="form-grid" (ngSubmit)="preview()">
-        <label>Perfil<input name="previewProfile" [(ngModel)]="previewForm.profileCode" required></label>
-        <label>Asunto<input name="previewSubject" [(ngModel)]="previewForm.subject"></label>
-        <label class="span-2">Cuerpo<textarea name="previewBody" [(ngModel)]="previewForm.body" rows="2"></textarea></label>
-        <label class="span-2">Decisiones simuladas JSON<textarea name="previewDecisions" [(ngModel)]="previewDecisions" rows="5" class="mono"></textarea></label>
-        <div class="actions span-2"><button class="btn btn-primary" [disabled]="busy()">Previsualizar sin enviar</button></div>
-      </form>
-      @if (previewJson()) {
-        <p>Ruta: {{previewRoute()}}. Campos mapeados: {{previewFields()}}.</p>
-        <pre class="mono" style="white-space:pre-wrap;overflow:auto;max-height:24rem">{{previewJson()}}</pre>
-      }
-    </section>
-    <section class="panel lower">
-      <div class="panel-title"><h2>Trazabilidad de entregas CRM</h2><button type="button" class="btn btn-secondary" (click)="reloadAudits()">Actualizar</button></div>
-      <p class="muted">Se registran requestId, clasificación, operación, estado HTTP e ID externo; no se almacenan contraseñas, tokens ni el texto del correo.</p>
-      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Request ID</th><th>CRM / operación</th><th>Resultado</th><th>HTTP</th><th>Case ID</th></tr></thead><tbody>
-        @for (a of audits(); track a.id) {
-          <tr><td>{{a.createdAt}}</td><td>{{a.requestId}}</td><td>{{a.integrationCode}} / {{a.operationCode}}</td><td>{{a.outcome}}</td><td>{{a.httpStatus ?? '-'}}</td><td>{{a.externalId || '-'}}</td></tr>
-        }
-      </tbody></table></div>
-    </section>
-  `
+  selector: 'app-crm-mapping', standalone: true, imports: [FormsModule, DatePipe],
+  templateUrl: './crm-mapping.component.html', styleUrls: ['./crm-workflow.css']
 })
-export class CrmMappingComponent implements OnChanges {
+export class CrmMappingComponent implements OnChanges, OnDestroy {
   @Input() operationId?: number;
   @Input() integrationId?: number;
-  fields = signal<any[]>([]); assignments = signal<any[]>([]);
-  teams = signal<any[]>([]); users = signal<any[]>([]); fieldNames = signal<string[]>([]);
-  audits = signal<any[]>([]); busy = signal(false); info = signal(''); error = signal(''); validation = signal<any>(null);
-  previewJson = signal(''); previewRoute = signal(''); previewFields = signal('');
-  fieldForm:any = this.fieldDefaults(); assignmentForm:any = this.assignmentDefaults();
-  selectedTeamId = ''; selectedUserId = ''; suggestedField = ''; newTeamName = ''; bulkDimension = 'DESTINO';
-  previewDecisions = JSON.stringify({PRODUCTO:'INTERNET_DEDICADO',TIPO_GESTION:'CAMBIO_RUC',PRIORIDAD:'MEDIA',DESTINO:'BACKOFFICE'},null,2);
-  previewForm:any = {profileCode:'TELCO_DEMO',subject:'Cambio de RUC de internet dedicado',body:'Solicitud ficticia para demostración'};
-  constructor(private readonly api:ApiService) {}
-  ngOnChanges():void { this.error.set('');this.info.set('');this.validation.set(null);this.reload();this.reloadAudits(); }
-  reload():void {
-    if(!this.operationId) {this.fields.set([]);this.assignments.set([]);return;}
-    this.api.crmFieldMappings(this.operationId).subscribe({next:x=>this.fields.set(x),error:e=>this.fail(e)});
-    this.api.crmAssignments(this.operationId).subscribe({next:x=>this.assignments.set(x),error:e=>this.fail(e)});
+  @Input() operationCode = '';
+  @Input() operationPath = '';
+  @Input() section = 'fields';
+  @Input() isEspo = true;
+  readonly fields = signal<any[]>([]);
+  readonly assignments = signal<any[]>([]);
+  readonly catalog = signal<Record<string, any>>({});
+  readonly teams = signal<any[]>([]);
+  readonly users = signal<any[]>([]);
+  readonly audits = signal<any[]>([]);
+  readonly busy = signal(false);
+  readonly loading = signal(false);
+  readonly catalogLoading = signal(false);
+  readonly catalogLoaded = signal(false);
+  readonly catalogError = signal('');
+  readonly teamCatalogError = signal('');
+  readonly userCatalogError = signal('');
+  readonly info = signal('');
+  readonly error = signal('');
+  readonly validation = signal<any>(null);
+  readonly previewResult = signal<any>(null);
+  fieldForm: any = this.fieldDefaults();
+  equivalences: Record<string, any> = {};
+  assignmentDimension = '';
+  assignmentDrafts: Record<string, Record<string, string>> = {};
+  previewSelections: Record<string, string> = {};
+  previewSubject = 'Solicitud de ejemplo';
+  previewBody = 'Prueba de configuración';
+  newTeamOption = '';
+  newTeamName = '';
+  private context = 0;
+  private readSubscription?: Subscription;
+  private catalogSubscription?: Subscription;
+
+  constructor(private readonly api: ApiService, public readonly knowledge: CrmKnowledgeService) {
+    effect(() => {
+      const profile = this.knowledge.profileCode();
+      const dimensions = this.knowledge.dimensions();
+      const options = this.knowledge.options();
+      untracked(() => {
+        this.resetField(); this.assignmentDrafts = {}; this.newTeamOption = ''; this.newTeamName = '';
+        this.assignmentDimension = dimensions.find(d => d.code === 'DESTINO')?.code ?? dimensions[0]?.code ?? '';
+        this.previewSelections = Object.fromEntries(dimensions.map(d => [d.code, options[d.code]?.find(o => o.active)?.code ?? '']));
+        this.previewResult.set(null); this.validation.set(null);
+        if (profile) this.info.set('');
+      });
+    });
   }
-  loadCatalog():void {
-    if(!this.integrationId)return;
-    this.busy.set(true);this.error.set('');
-    this.api.crmCatalogFields(this.integrationId).subscribe({next:x=>{this.fieldNames.set(Object.keys(x).sort());this.busy.set(false);this.info.set('Campos CRM consultados');},error:e=>{this.busy.set(false);this.fail(e);}});
-    this.api.crmCatalogTeams(this.integrationId).subscribe({next:x=>this.teams.set(x),error:e=>this.fail(e)});
-    this.api.crmCatalogUsers(this.integrationId).subscribe({next:x=>this.users.set(x),error:e=>this.fail(e)});
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['operationId'] || changes['integrationId'] || changes['operationPath']) {
+      this.context++;
+      this.error.set(''); this.info.set(''); this.validation.set(null); this.previewResult.set(null);
+      this.fields.set([]); this.assignments.set([]); this.assignmentDrafts = {}; this.resetField();
+      this.reload(); this.loadCatalog();
+    }
+    if (changes['section']) { this.info.set(''); this.error.set(''); if (this.section === 'history') this.reloadAudits(); }
   }
-  editField(x:any):void {this.fieldForm={...x};this.suggestedField=x.targetField;}
-  resetField():void {this.fieldForm=this.fieldDefaults();this.suggestedField='';}
-  saveField():void {
-    if(!this.operationId)return;
-    const request=this.fieldForm.id ? this.api.updateCrmFieldMapping(this.operationId,this.fieldForm.id,this.fieldForm)
-      :this.api.createCrmFieldMapping(this.operationId,this.fieldForm);
-    request.subscribe({next:()=>{this.resetField();this.reload();this.info.set('Mapeo de campo guardado');},error:e=>this.fail(e)});
+  ngOnDestroy(): void { this.context++; this.readSubscription?.unsubscribe(); this.catalogSubscription?.unsubscribe(); }
+  hasDrafts(): boolean { return Object.keys(this.assignmentDrafts).length > 0 || !!this.fieldForm.dimensionCode; }
+  reload(): void {
+    this.readSubscription?.unsubscribe(); this.validation.set(null);
+    if (!this.operationId) return;
+    const context = this.context;
+    this.loading.set(true);
+    this.readSubscription = forkJoin({ fields: this.api.crmFieldMappings(this.operationId), assignments: this.api.crmAssignments(this.operationId) })
+      .pipe(finalize(() => this.loading.set(false))).subscribe({
+        next: result => { if (context === this.context) { this.fields.set(result.fields); this.assignments.set(result.assignments); } },
+        error: e => { if (context === this.context) this.fail(e); }
+      });
   }
-  deleteField(x:any):void {if(window.confirm('¿Eliminar este mapeo de campo?'))this.api.deleteCrmFieldMapping(x.id).subscribe({next:()=>this.reload(),error:e=>this.fail(e)});}
-  editAssignment(x:any):void {this.assignmentForm={...x};}
-  resetAssignment():void {this.assignmentForm=this.assignmentDefaults();this.selectedTeamId='';this.selectedUserId='';}
-  chooseRecord(id:string,catalog:any[]):void {
-    const record=catalog.find(x=>x.id===id);
-    if(record){this.assignmentForm.externalId=record.id;this.assignmentForm.externalName=record.name;}
+  loadCatalog(): void {
+    this.catalogSubscription?.unsubscribe();
+    this.catalog.set({}); this.teams.set([]); this.users.set([]); this.catalogLoaded.set(false);
+    this.catalogError.set(''); this.teamCatalogError.set(''); this.userCatalogError.set('');
+    if (!this.integrationId || !this.operationId || !this.isEspo) return;
+    const entity = /^\/api\/v1\/([A-Za-z][A-Za-z0-9_]*)$/.exec(this.operationPath)?.[1];
+    if (!entity) { this.catalogError.set('Esta acción no permite consultar un catálogo de campos. Usa la configuración avanzada.'); return; }
+    const context = this.context;
+    const failures: Record<string, string> = {};
+    this.catalogLoading.set(true);
+    this.catalogSubscription = forkJoin({
+      fields: this.api.crmCatalogFields(this.integrationId, entity).pipe(catchError(e => { failures['fields'] = this.message(e); return of({}); })),
+      teams: this.api.crmCatalogTeams(this.integrationId).pipe(catchError(e => { failures['teams'] = this.message(e); return of([]); })),
+      users: this.api.crmCatalogUsers(this.integrationId).pipe(catchError(e => { failures['users'] = this.message(e); return of([]); }))
+    }).pipe(finalize(() => this.catalogLoading.set(false))).subscribe(result => {
+      if (context !== this.context) return;
+      this.catalog.set(result.fields); this.teams.set(result.teams); this.users.set(result.users);
+      this.catalogLoaded.set(true); this.catalogError.set(failures['fields'] ?? '');
+      this.teamCatalogError.set(failures['teams'] ?? ''); this.userCatalogError.set(failures['users'] ?? '');
+    });
   }
-  saveAssignment():void {
-    if(!this.operationId)return;
-    const request=this.assignmentForm.id?this.api.updateCrmAssignment(this.operationId,this.assignmentForm.id,this.assignmentForm)
-      :this.api.createCrmAssignment(this.operationId,this.assignmentForm);
-    request.subscribe({next:()=>{this.resetAssignment();this.reload();this.info.set('Asignación guardada');},error:e=>this.fail(e)});
+  availableFields(): string[] {
+    const reserved = ['id', 'createdAt', 'modifiedAt', 'deleted', 'createdById', 'teamsIds', 'assignedUserId'];
+    return Object.keys(this.catalog()).filter(k => !reserved.includes(k) && !this.catalog()[k].readOnly && !this.catalog()[k].notStorable).sort();
   }
-  deleteAssignment(x:any):void {if(window.confirm('¿Eliminar esta asignación?'))this.api.deleteCrmAssignment(x.id).subscribe({next:()=>this.reload(),error:e=>this.fail(e)});}
-  ensureTeam():void {
-    if(!this.operationId)return;
-    const data={dimensionCode:this.assignmentForm.dimensionCode,optionCode:this.assignmentForm.optionCode,name:this.newTeamName.trim()};
-    if(!data.dimensionCode||!data.optionCode||!data.name){this.error.set('Completa dimensión, opción y nombre del equipo');return;}
-    if(!window.confirm('¿Consultar EspoCRM y crear el equipo '+data.name+' si no existe? Esta acción modifica el CRM real.'))return;
+  fieldName(code: string): string {
+    const names: Record<string, string> = { name: 'Título', description: 'Descripción', priority: 'Prioridad', type: 'Tipo', status: 'Estado' };
+    return names[code] ?? code.replace(/^c(?=[A-Z])/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
+  }
+  targetOptions(): string[] { return this.catalog()[this.fieldForm.targetField]?.options ?? []; }
+  hasDimension(code: string): boolean { return this.knowledge.dimensions().some(d => d.code === code); }
+  resetField(): void { this.fieldForm = this.fieldDefaults(); this.equivalences = {}; }
+  editField(field: any): void { this.fieldForm = { ...field }; this.readEquivalences(); this.error.set(''); this.info.set(''); }
+  readEquivalences(): boolean {
+    try {
+      const value = JSON.parse(this.fieldForm.valueMapJson || '{}');
+      if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error();
+      this.equivalences = value; return true;
+    } catch { this.error.set('Las equivalencias avanzadas deben contener un objeto JSON válido.'); return false; }
+  }
+  setEquivalence(code: string, value: any): void {
+    if (value === null || value === undefined) delete this.equivalences[code]; else this.equivalences[code] = value;
+    this.fieldForm.valueMapJson = JSON.stringify(this.equivalences, null, 2);
+  }
+  hasEquivalence(code: string): boolean { return Object.prototype.hasOwnProperty.call(this.equivalences, code); }
+  equivalence(code: string): any { return this.hasEquivalence(code) ? this.equivalences[code] : null; }
+  originalAllowed(code: string): boolean { return !this.targetOptions().length || this.targetOptions().includes(code); }
+  fieldProblems(field: any): string[] {
+    if (!field.active) return [];
+    const allowed: string[] = this.catalog()[field.targetField]?.options ?? [];
+    if (!allowed.length) return [];
+    let mapped: Record<string, string>;
+    try { mapped = JSON.parse(field.valueMapJson || '{}'); }
+    catch { return [`${this.fieldName(field.targetField)}: equivalencias inválidas.`]; }
+    return this.knowledge.choices(field.dimensionCode).filter(option => option.active).flatMap(option => {
+      const value = mapped[option.code] ?? option.code;
+      return allowed.includes(value) ? [] : [`${this.fieldName(field.targetField)}: «${option.name}» debe tener un equivalente válido en EspoCRM.`];
+    });
+  }
+  saveField(): void {
+    if (!this.operationId || !this.readEquivalences()) return;
+    if (!this.fieldForm.dimensionCode || !this.fieldForm.targetField) { this.error.set('Elige una dimensión y un campo de destino.'); return; }
+    const problems = this.fieldProblems(this.fieldForm);
+    if (problems.length) { this.error.set(problems.join(' ')); return; }
+    const operationId = this.operationId, context = this.context;
+    const request = this.fieldForm.id ? this.api.updateCrmFieldMapping(operationId, this.fieldForm.id, this.fieldForm) : this.api.createCrmFieldMapping(operationId, this.fieldForm);
+    this.busy.set(true); this.error.set('');
+    request.pipe(finalize(() => this.busy.set(false))).subscribe({
+      next: () => { if (context === this.context) { this.resetField(); this.reload(); this.info.set('Campo vinculado.'); } },
+      error: e => { if (context === this.context) this.fail(e); }
+    });
+  }
+  deleteField(field: any): void {
+    if (!window.confirm('¿Quitar el vínculo con ' + this.fieldName(field.targetField) + '?')) return;
     this.busy.set(true);
-    this.api.crmEnsureTeam(this.operationId,data).subscribe({next:result=>{
-      this.busy.set(false);this.reload();this.loadCatalog();
-      this.info.set((result.created?'Equipo creado: ':'Equipo reutilizado: ')+result.name+' ('+result.id+')');
-    },error:e=>{this.busy.set(false);this.fail(e);}});
+    this.api.deleteCrmFieldMapping(field.id).pipe(finalize(() => this.busy.set(false))).subscribe({ next: () => this.reload(), error: e => this.fail(e) });
   }
-  importTeamsFromKnowledge():void {
-    if(!this.operationId)return;
-    const operationId=this.operationId;
-    this.api.profiles().subscribe({next:profiles=>{
-      const profile=profiles.find(x=>x.code===this.previewForm.profileCode);
-      if(!profile){this.error.set('Perfil de Business Knowledge no encontrado');return;}
-      this.api.dimensions(profile.id).subscribe({next:dimensions=>{
-        const dim=dimensions.find(x=>x.code===this.bulkDimension && x.active);
-        if(!dim){this.error.set('La dimensión indicada no existe o no está activa');return;}
-        this.api.options(dim.id).subscribe({next:options=>{
-          const active=options.filter(x=>x.active);
-          if(active.length===0||active.length>30){this.error.set('Debe haber entre 1 y 30 opciones activas para sincronizar');return;}
-          const summary=active.map(x=>x.code+' → '+x.name).join('\n');
-          if(!window.confirm('Se crearán o reutilizarán estos equipos en EspoCRM y se vincularán a '+dim.code+':\n'+summary+'\n¿Continuar?'))return;
-          this.busy.set(true);
-          from(active).pipe(concatMap(x=>this.api.crmEnsureTeam(operationId,{
-            dimensionCode:dim.code,optionCode:x.code,name:x.name
-          })),toArray()).subscribe({next:result=>{
-            this.busy.set(false);this.reload();this.loadCatalog();
-            this.info.set('Equipos sincronizados: '+result.length+'; nuevos: '+result.filter(x=>x.created).length);
-          },error:e=>{this.busy.set(false);this.fail(e);this.reload();}});
-        },error:e=>this.fail(e)});
-      },error:e=>this.fail(e)});
-    },error:e=>this.fail(e)});
+  existingAssignment(option: string, kind: string): any {
+    return this.assignments().find(a => a.dimensionCode === this.assignmentDimension && a.optionCode === option && a.assignmentKind === kind);
   }
-  validate():void {if(!this.operationId)return;this.busy.set(true);this.api.crmValidate(this.operationId).subscribe({next:x=>{this.busy.set(false);this.validation.set(x);},error:e=>{this.busy.set(false);this.fail(e);}});}
-  preview():void {
-    let decisions:Record<string,string>;
-    try {decisions=JSON.parse(this.previewDecisions);if(!decisions||Array.isArray(decisions)||typeof decisions!=='object')throw new Error('Formato');}
-    catch {this.error.set('Las decisiones deben ser un objeto JSON');return;}
-    this.busy.set(true);this.error.set('');
-    this.api.crmPreview({...this.previewForm,decisions}).subscribe({next:x=>{
-      this.busy.set(false);
-      try{this.previewJson.set(JSON.stringify(JSON.parse(x.bodyJson),null,2));}catch{this.previewJson.set(x.bodyJson);}
-      this.previewRoute.set(x.integrationCode+' / '+x.operationCode);this.previewFields.set((x.mappedFields||[]).join(', ')||'Solo plantilla base');
-    },error:e=>{this.busy.set(false);this.fail(e);}});
+  assignmentValue(option: string, kind: string): string {
+    const draft = this.assignmentDrafts[option];
+    return draft && Object.prototype.hasOwnProperty.call(draft, kind) ? draft[kind] : this.existingAssignment(option, kind)?.externalId ?? '';
   }
-  reloadAudits():void {this.api.crmAudits().subscribe({next:x=>this.audits.set(x),error:e=>this.fail(e)});}
-  private fail(e:any):void {this.error.set(e.error?.detail||'Error HTTP '+e.status+' al consultar CRM');}
-  private fieldDefaults(){return{dimensionCode:'DESTINO',targetField:'',valueMapJson:'{}',required:false,active:true};}
-  private assignmentDefaults(){return{dimensionCode:'DESTINO',optionCode:'BACKOFFICE',assignmentKind:'TEAM',externalId:'',externalName:'',active:true};}
+  setAssignment(option: string, kind: string, value: string): void {
+    this.assignmentDrafts[option] = { ...this.assignmentDrafts[option], [kind]: value }; this.validation.set(null); this.info.set('');
+  }
+  changeAssignmentDimension(code: string): void {
+    if (Object.keys(this.assignmentDrafts).length && !window.confirm('¿Descartar los cambios de equipos sin guardar?')) return;
+    this.assignmentDimension = code; this.assignmentDrafts = {}; this.newTeamOption = ''; this.newTeamName = '';
+  }
+  recordName(id: string, kind: string): string {
+    return (kind === 'TEAM' ? this.teams() : this.users()).find(r => r.id === id)?.name
+      ?? this.assignments().find(a => a.externalId === id && a.assignmentKind === kind)?.externalName ?? 'Asignación guardada';
+  }
+  inCatalog(id: string, kind: string): boolean { return (kind === 'TEAM' ? this.teams() : this.users()).some(r => r.id === id); }
+  saveAssignments(): void {
+    if (!this.operationId) return;
+    const operationId = this.operationId, context = this.context;
+    const updates: Array<() => Observable<any>> = [];
+    let removes = 0;
+    for (const [option, kinds] of Object.entries(this.assignmentDrafts)) {
+      for (const [kind, id] of Object.entries(kinds)) {
+        const existing = this.existingAssignment(option, kind);
+        if (!id) { if (existing) { updates.push(() => this.api.deleteCrmAssignment(existing.id)); removes++; } continue; }
+        if (existing?.externalId === id && existing.active) continue;
+        const body = { dimensionCode: this.assignmentDimension, optionCode: option, assignmentKind: kind, externalId: id, externalName: this.recordName(id, kind), active: true };
+        updates.push(() => existing ? this.api.updateCrmAssignment(operationId, existing.id, body) : this.api.createCrmAssignment(operationId, body));
+      }
+    }
+    if (!updates.length) { this.assignmentDrafts = {}; this.info.set('No hay cambios pendientes.'); return; }
+    if (removes && !window.confirm('Se quitarán ' + removes + ' asignaciones guardadas. ¿Continuar?')) return;
+    let completed = 0;
+    this.busy.set(true); this.error.set(''); this.info.set('');
+    from(updates).pipe(concatMap(save => save().pipe(tap(() => completed++))), toArray(), finalize(() => this.busy.set(false))).subscribe({
+      next: () => { if (context === this.context) { this.assignmentDrafts = {}; this.reload(); this.info.set('Equipos y responsables guardados.'); } },
+      error: e => { if (context === this.context) { this.fail(e); this.info.set(completed + ' cambios confirmados. Revisa y vuelve a guardar los pendientes.'); this.reload(); } }
+    });
+  }
+  ensureTeam(): void {
+    if (!this.operationId || !this.newTeamOption || !this.newTeamName.trim()) return;
+    if (!window.confirm('¿Crear o reutilizar el equipo «' + this.newTeamName.trim() + '» en EspoCRM y vincularlo?')) return;
+    const context = this.context;
+    this.busy.set(true); this.error.set('');
+    this.api.crmEnsureTeam(this.operationId, { dimensionCode: this.assignmentDimension, optionCode: this.newTeamOption, name: this.newTeamName.trim() })
+      .pipe(finalize(() => this.busy.set(false))).subscribe({
+        next: r => { if (context === this.context) { this.assignmentDrafts = {}; this.reload(); this.loadCatalog(); this.info.set('Equipo vinculado: ' + r.name); } },
+        error: e => { if (context === this.context) this.fail(e); }
+      });
+  }
+  validate(): void {
+    if (!this.operationId) return;
+    const context = this.context;
+    this.busy.set(true); this.error.set(''); this.validation.set(null);
+    this.api.crmValidate(this.operationId).pipe(finalize(() => this.busy.set(false))).subscribe({
+      next: r => {
+        if (context !== this.context) return;
+        const errors = [...(r.errors ?? []), ...this.fields().flatMap(field => this.fieldProblems(field))];
+        this.validation.set({ ...r, compatible: r.compatible && errors.length === 0, errors });
+      },
+      error: e => { if (context === this.context) this.fail(e); }
+    });
+  }
+  preview(): void {
+    const decisions = Object.fromEntries(Object.entries(this.previewSelections)
+      .filter(([, value]) => value !== '' && value !== null && value !== undefined)
+      .map(([key, value]) => [key, String(value)]));
+    const context = this.context;
+    this.busy.set(true); this.error.set(''); this.previewResult.set(null);
+    this.api.crmPreview({ profileCode: this.knowledge.profileCode(), subject: this.previewSubject, body: this.previewBody, decisions })
+      .pipe(finalize(() => this.busy.set(false))).subscribe({
+        next: r => {
+          if (context !== this.context) return;
+          let body: any; try { body = JSON.parse(r.bodyJson); } catch { body = {}; }
+          this.previewResult.set({ ...r, body, formatted: JSON.stringify(body, null, 2) });
+        }, error: e => { if (context === this.context) this.fail(e); }
+      });
+  }
+  previewTeams(): string { return (this.previewResult()?.body?.teamsIds ?? []).map((id: string) => this.recordName(id, 'TEAM')).join(', '); }
+  previewUser(): string { const id = this.previewResult()?.body?.assignedUserId; return id ? this.recordName(id, 'USER') : ''; }
+  previewFields(): Array<{ name: string; value: string }> {
+    return (this.previewResult()?.mappedFields ?? []).filter((f: string) => !['teamsIds', 'assignedUserId'].includes(f)).map((f: string) => ({ name: this.fieldName(f), value: String(this.previewResult()?.body?.[f] ?? '') }));
+  }
+  reloadAudits(): void { this.api.crmAudits().subscribe({ next: r => this.audits.set(r), error: e => this.fail(e) }); }
+  outcome(code: string): string { return ({ CRM_CREATED: 'Caso creado', CRM_ERROR: 'Error de envío', REVIEW_REQUIRED: 'Requiere revisión' } as Record<string, string>)[code] ?? code; }
+  private fieldDefaults(): any { return { dimensionCode: '', targetField: '', valueMapJson: '{}', required: false, active: true }; }
+  private message(e: any): string { return e.error?.detail ?? 'No se pudo completar la consulta (HTTP ' + e.status + ').'; }
+  private fail(e: any): void { this.error.set(this.message(e)); }
 }

@@ -1,0 +1,30 @@
+:host { display: block; }
+.page-header { align-items: flex-start; flex-wrap: wrap; }
+.page-header > .btn { flex-shrink: 0; text-decoration: none; }
+[hidden] { display: none !important; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workflow-context { margin-bottom: 18px; }
+.workflow-context .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.workflow-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.workflow-nav button { border: 1px solid #d6deea; background: #fff; color: #4b5870; padding: 11px 15px; border-radius: 10px; font-weight: 700; }
+.workflow-nav button.current { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }
+.workflow-nav button:disabled { opacity: .45; cursor: not-allowed; }
+.workflow-footer { display: flex; justify-content: space-between; margin-top: 20px; }
+.advanced { border-top: 1px solid #e1e7ef; padding-top: 14px; }
+.advanced summary { cursor: pointer; color: #4b5870; font-size: 13px; font-weight: 700; padding: 5px 0; }
+.advanced[open] > summary { margin-bottom: 14px; }
+.notice { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 10px; padding: 12px 15px; color: #1e40af; font-size: 14px; }
+.notice.success { border-color: #a7f3d0; background: #ecfdf5; color: #065f46; }
+.warning { color: #92400e; display: block; margin-top: 5px; }
+.hint { font-size: 12px; line-height: 1.6; }
+.choice-table { margin-top: 14px; }
+.choice-table td:first-child { width: 28%; }
+.choice-table select, .choice-table input { width: 100%; min-width: 170px; padding: 10px; border-radius: 9px; border: 1px solid #d6deea; color: #172033; background: #fff; }
+.row-actions { display: flex; gap: 14px; }
+.compact-form { max-width: 600px; margin: 18px 0; }
+.preview-card { background: #f8fafc; border: 1px solid #e1e7ef; border-radius: 12px; padding: 18px; }
+.preview-card h3 { margin-top: 0; }
+.context-status { margin: 12px 0 0; font-size: 12px; color: #64748b; }
+.actions { flex-wrap: wrap; }
+button:focus-visible, summary:focus-visible, select:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+@media (max-width: 800px) { .workflow-context .form-grid { grid-template-columns: 1fr; } .workflow-nav button { flex: 1 1 40%; } .panel-title { align-items: start; flex-wrap: wrap; } }
