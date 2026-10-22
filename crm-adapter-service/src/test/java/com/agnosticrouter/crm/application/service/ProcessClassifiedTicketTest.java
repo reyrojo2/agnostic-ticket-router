@@ -16,7 +16,7 @@ class ProcessClassifiedTicketTest {
         StandardTicketEvent ticket=mock(StandardTicketEvent.class);
         when(ticket.requiresHumanReview()).thenReturn(true);
         when(ticket.decisions()).thenReturn(Map.of());
-        new ProcessClassifiedTicket(routes,executor,output).process(ticket);
+        new ProcessClassifiedTicket(routes,executor,output,mock(CrmAuditService.class)).process(ticket);
         verifyNoInteractions(routes,executor);
         verify(output).publish(eq(ticket),eq("REVIEW_REQUIRED"),anyString(),anyMap());
     }

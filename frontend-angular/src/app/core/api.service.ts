@@ -39,6 +39,22 @@ export class ApiService {
   updateCrmRoute(id: number, body: any) { return this.http.put(`${API.crm}/api/v1/admin/crm/routes/${id}`, body); }
   deleteCrmRoute(id: number) { return this.http.delete(`${API.crm}/api/v1/admin/crm/routes/${id}`); }
 
+  crmFieldMappings(operationId: number) { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/field-mappings`); }
+  createCrmFieldMapping(operationId: number, body: any) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/field-mappings`, body); }
+  updateCrmFieldMapping(operationId: number, id: number, body: any) { return this.http.put<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/field-mappings/${id}`, body); }
+  deleteCrmFieldMapping(id: number) { return this.http.delete(`${API.crm}/api/v1/admin/crm/field-mappings/${id}`); }
+  crmAssignments(operationId: number) { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/assignments`); }
+  createCrmAssignment(operationId: number, body: any) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/assignments`, body); }
+  updateCrmAssignment(operationId: number, id: number, body: any) { return this.http.put<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/assignments/${id}`, body); }
+  deleteCrmAssignment(id: number) { return this.http.delete(`${API.crm}/api/v1/admin/crm/assignments/${id}`); }
+  crmCatalogFields(integrationId: number) { return this.http.get<Record<string, any>>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/fields`); }
+  crmCatalogTeams(integrationId: number) { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/teams`); }
+  crmCatalogUsers(integrationId: number) { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/integrations/${integrationId}/catalog/users`); }
+  crmEnsureTeam(operationId: number, body: any) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/teams/ensure`, body); }
+  crmValidate(operationId: number) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/operations/${operationId}/validate`, {}); }
+  crmPreview(body: any) { return this.http.post<any>(`${API.crm}/api/v1/admin/crm/preview`, body); }
+  crmAudits() { return this.http.get<any[]>(`${API.crm}/api/v1/admin/crm/audits`); }
+
   notificationChannels() { return this.http.get<any[]>(`${API.notifications}/api/v1/admin/notifications/channels`); }
   createNotificationChannel(body: any) { return this.http.post(`${API.notifications}/api/v1/admin/notifications/channels`, body); }
   updateNotificationChannel(id: number, body: any) { return this.http.put(`${API.notifications}/api/v1/admin/notifications/channels/${id}`, body); }

@@ -4,6 +4,7 @@ import com.agnosticrouter.crm.application.model.CrmExecutionResult;
 import com.agnosticrouter.crm.application.port.CrmExecutionPort;
 import com.agnosticrouter.crm.application.service.ResponseValueExtractor;
 import com.agnosticrouter.crm.application.service.TemplateRenderer;
+import com.agnosticrouter.crm.application.service.CrmPayloadComposer;
 
 import com.agnosticrouter.contracts.StandardTicketEvent;
 import com.agnosticrouter.crm.domain.model.CrmIntegration;
@@ -21,11 +22,13 @@ import java.util.*;
 public class CrmHttpExecutor implements CrmExecutionPort {
     private final HttpClient httpClient;
     private final TemplateRenderer templates;
+    private final CrmPayloadComposer composer;
     private final ResponseValueExtractor responseExtractor;
     private final CrmAuthenticationConfigurer auth;
 
     public CrmHttpExecutor(
             TemplateRenderer templates,
+            CrmPayloadComposer composer,
             ResponseValueExtractor responseExtractor,
             CrmAuthenticationConfigurer auth
     ) {
@@ -33,6 +36,7 @@ public class CrmHttpExecutor implements CrmExecutionPort {
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.templates = templates;
+        this.composer = composer;
         this.responseExtractor = responseExtractor;
         this.auth = auth;
     }
@@ -131,7 +135,7 @@ public class CrmHttpExecutor implements CrmExecutionPort {
         }
         if (operation.getContentType() != null
                 && operation.getContentType().toLowerCase(Locale.ROOT).contains("json")) {
-            return templates.renderJson(operation.getBodyTemplate(), ticket);
+            return composer.compose(operation, ticket).json();
         }
         return templates.renderText(operation.getBodyTemplate(), ticket);
     }
