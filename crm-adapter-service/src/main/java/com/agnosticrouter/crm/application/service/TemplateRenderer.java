@@ -1,5 +1,7 @@
 package com.agnosticrouter.crm.application.service;
 
+import com.agnosticrouter.contracts.DecisionValue;
+import com.agnosticrouter.contracts.StandardTicketEvent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.*;
@@ -25,7 +27,7 @@ public class TemplateRenderer {
         if (template == null) {
             return null;
         }
-        JsonNode root = objectMapper.valueToTree(context);
+        JsonNode root = contextNode(context);
         Matcher matcher = TOKEN.matcher(template);
         StringBuffer output = new StringBuffer();
         while (matcher.find()) {
@@ -43,7 +45,7 @@ public class TemplateRenderer {
         }
         try {
             JsonNode templateNode = objectMapper.readTree(template);
-            JsonNode contextNode = objectMapper.valueToTree(context);
+            JsonNode contextNode = contextNode(context);
             JsonNode rendered = renderNode(templateNode, contextNode);
             return objectMapper.writeValueAsString(rendered);
         } catch (Exception ex) {
@@ -70,6 +72,35 @@ public class TemplateRenderer {
         } catch (Exception ex) {
             throw new IllegalArgumentException("Los headers configurados no son JSON válido: " + ex.getMessage(), ex);
         }
+    }
+
+    /** Computed context values; shared event contracts remain unchanged. */
+    private JsonNode contextNode(Object context) {
+        JsonNode node = objectMapper.valueToTree(context);
+        if (context instanceof StandardTicketEvent ticket && node instanceof ObjectNode object) {
+            object.put("classificationSummary", classificationSummary(ticket));
+        }
+        return node;
+    }
+
+    /** All event dimensions, ordered by code; no assumptions about a specific business. */
+    private String classificationSummary(StandardTicketEvent ticket) {
+        if (ticket.decisions() == null || ticket.decisions().isEmpty()) {
+            return "Sin decisiones registradas";
+        }
+        StringBuilder result = new StringBuilder();
+        ticket.decisions().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> {
+                    DecisionValue decision = entry.getValue();
+                    if (result.length() > 0) result.append("\n");
+                    result.append(entry.getKey()).append(": ");
+                    result.append(decision == null || decision.value() == null ? "Sin resolver" : decision.value());
+                    if (decision != null && decision.source() != null && !decision.source().isBlank()) {
+                        result.append(" [").append(decision.source()).append("]");
+                    }
+                });
+        return result.toString();
     }
 
     private JsonNode renderNode(JsonNode node, JsonNode context) {

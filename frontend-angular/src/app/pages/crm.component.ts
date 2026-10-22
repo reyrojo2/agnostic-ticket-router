@@ -6,7 +6,7 @@ import { ApiService } from '../core/api.service';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <header class="page-header"><div><p class="eyebrow">Adaptador universal</p><h1>Integraciones CRM</h1><p class="muted">Configura URL, autenticación, plantilla JSON, respuesta y reglas de enrutamiento sin recompilar.</p></div></header>
+    <header class="page-header"><div><p class="eyebrow">Adaptador universal</p><h1>Integraciones CRM</h1><p class="muted">1. El motor clasifica en Business Knowledge / Decision Engine. 2. Las rutas eligen el CRM. 3. La plantilla indica qué datos guardar en el caso.</p></div></header>
 
     <div class="two-column">
       <section class="panel">
@@ -50,6 +50,8 @@ import { ApiService } from '../core/api.service';
             <label>Status éxito<input name="ostatus" [(ngModel)]="operationForm.successStatusCodes" placeholder="200,201"></label>
             <label class="span-2">Headers JSON<textarea name="oheaders" [(ngModel)]="operationForm.headersTemplateJson" rows="2"></textarea></label>
             <label class="span-2">Body template JSON<textarea name="obody" [(ngModel)]="operationForm.bodyTemplate" rows="10" class="mono"></textarea></label>
+            <p class="muted span-2">EspoCRM solo muestra los campos que recibe y conoce. Usa <code>{{ '{{classificationSummary}}' }}</code> para incluir todas las dimensiones en la descripción; puedes mapear <code>{{ '{{decisions.DESTINO.value}}' }}</code> a un campo personalizado si ese campo ya existe en EspoCRM. El equipo asignado requiere un ID de equipo real y el campo <code>teamsIds</code>.</p>
+            <div class="actions span-2"><button type="button" class="btn btn-secondary" (click)="applyEspoTemplate()">Usar plantilla EspoCRM con clasificación</button></div>
             <label>ID externo path<input name="oid" [(ngModel)]="operationForm.externalIdPath" placeholder="data.caseNumber"></label>
             <label>Timeout ms<input name="otimeout" [(ngModel)]="operationForm.timeoutMs" type="number"></label>
             <label>Intentos<input name="oattempts" [(ngModel)]="operationForm.maxAttempts" type="number"></label>
@@ -62,7 +64,7 @@ import { ApiService } from '../core/api.service';
     </div>
 
     <section class="panel lower">
-      <div class="panel-title"><div><h2>Rutas de integración</h2><p class="muted">Una ruta puede ser general por perfil o condicionarse por una dimensión/opción.</p></div><button class="btn btn-secondary" (click)="newRoute()">Nueva</button></div>
+      <div class="panel-title"><div><h2>Rutas de integración</h2><p class="muted">Una ruta elige integración/operación según una dimensión. No crea automáticamente equipos ni campos en EspoCRM.</p></div><button class="btn btn-secondary" (click)="newRoute()">Nueva</button></div>
       <div class="table-wrap"><table><thead><tr><th>Perfil</th><th>Condición</th><th>Integración</th><th>Operación</th><th>Prioridad</th><th></th></tr></thead><tbody>
         @for (route of routes(); track route.id) {<tr><td>{{route.profileCode}}</td><td>{{route.dimensionCode || 'DEFAULT'}} {{route.optionCode || ''}}</td><td>{{route.integrationCode}}</td><td>{{route.operationCode}}</td><td>{{route.priority}}</td><td><button class="link" (click)="editRoute(route)">Editar</button></td></tr>}
       </tbody></table></div>
@@ -94,11 +96,18 @@ export class CrmComponent implements OnInit {
   editOperation(x:any):void{this.operationForm={...x};}
   saveOperation():void{if(!this.selectedIntegrationId)return;const c=this.operationForm.id?this.api.updateCrmOperation(this.operationForm.id,this.operationForm):this.api.createCrmOperation(this.selectedIntegrationId,this.operationForm);c.subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.newOperation();});}
   deleteOperation():void{if(this.operationForm.id)this.api.deleteCrmOperation(this.operationForm.id).subscribe(()=>{this.api.crmOperations(this.selectedIntegrationId!).subscribe(x=>this.operations.set(x));this.newOperation();});}
+  applyEspoTemplate():void {
+    if (this.operationForm.bodyTemplate && !window.confirm('¿Reemplazar el texto de la plantilla actual? Deberás pulsar Guardar operación para persistirla.')) return;
+    this.operationForm.bodyTemplate = JSON.stringify({
+      name: '{{subject}}',
+      description: '{{body}}\n\n--- Clasificación AgnosticTicketRouter ---\n{{classificationSummary}}\nSolicitud: {{requestId}}\nPerfil: {{profileCode}}'
+    }, null, 2);
+  }
   newRoute():void{this.routeForm=this.routeDefaults();}
   editRoute(x:any):void{this.routeForm={...x};}
   saveRoute():void{const c=this.routeForm.id?this.api.updateCrmRoute(this.routeForm.id,this.routeForm):this.api.createCrmRoute(this.routeForm);c.subscribe(()=>{this.reload();this.newRoute();});}
   deleteRoute():void{if(this.routeForm.id)this.api.deleteCrmRoute(this.routeForm.id).subscribe(()=>{this.reload();this.newRoute();});}
   private integrationDefaults(){return{code:'',name:'',baseUrl:'',authType:'NONE',usernameRef:'',secretRef:'',apiKeyName:'',tokenUrl:'',scope:'',defaultHeadersJson:'{}',active:true};}
-  private operationDefaults(){return{code:'CREATE_CASE',httpMethod:'POST',pathTemplate:'/api/v1/Case',contentType:'application/json',headersTemplateJson:'{}',bodyTemplate:'{\n  "title": "{{subject}}",\n  "description": "{{body}}"\n}',successStatusCodes:'200,201',externalIdPath:'id',timeoutMs:15000,maxAttempts:1,retryDelayMs:1000,active:true};}
+  private operationDefaults(){return{code:'CREATE_CASE',httpMethod:'POST',pathTemplate:'/api/v1/Case',contentType:'application/json',headersTemplateJson:'{}',bodyTemplate:JSON.stringify({name:'{{subject}}',description:'{{body}}\n\n--- Clasificación AgnosticTicketRouter ---\n{{classificationSummary}}\nSolicitud: {{requestId}}\nPerfil: {{profileCode}}'},null,2),successStatusCodes:'200,201',externalIdPath:'id',timeoutMs:15000,maxAttempts:1,retryDelayMs:1000,active:true};}
   private routeDefaults(){return{profileCode:'TELCO_DEMO',dimensionCode:'',optionCode:'',integrationCode:'ESPOCRM_LOCAL',operationCode:'CREATE_CASE',priority:100,active:true};}
 }
