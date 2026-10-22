@@ -2,35 +2,50 @@ package com.agnosticrouter.gmail;
 
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import org.junit.jupiter.api.Test;
+
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
-/** Prevents a future refactoring from bypassing the local application boundary. */
+/** Structural guardrails: application and domain must not depend on adapters. */
 class ArchitectureBoundaryTest {
+    private static final String ROOT = "com.agnosticrouter.gmail";
+
     @Test
-    void httpControllersMustNotDependDirectlyOnRepositories() {
-        var classes = new ClassFileImporter().importPackages("com.agnosticrouter.gmail");
-        noClasses().that().resideInAPackage("com.agnosticrouter.gmail.api..")
-                .should().dependOnClassesThat().resideInAPackage("com.agnosticrouter.gmail.repo..")
+    void controllersMustNotReadRepositoriesDirectly() {
+        var classes = new ClassFileImporter().importPackages(ROOT);
+        noClasses().that().resideInAPackage(ROOT + ".api..")
+                .should().dependOnClassesThat().resideInAPackage(ROOT + ".infrastructure.persistence..")
                 .allowEmptyShould(true)
                 .check(classes);
     }
 
     @Test
-    void applicationServicesMustNotImportTransportControllers() {
-        var classes = new ClassFileImporter().importPackages("com.agnosticrouter.gmail");
-        noClasses().that().resideInAPackage("..service..")
-                .should().dependOnClassesThat().resideInAPackage("com.agnosticrouter.gmail.api..")
-                .allowEmptyShould(true)
-                .check(classes);
-    }
-
-    @Test
-    void domainMustNotImportRabbitOrHttpControllers() {
-        var classes = new ClassFileImporter().importPackages("com.agnosticrouter.gmail");
-        noClasses().that().resideInAPackage("..domain..")
+    void applicationMustNotImportAdaptersOrTransportControllers() {
+        var classes = new ClassFileImporter().importPackages(ROOT);
+        noClasses().that().resideInAPackage(ROOT + ".application..")
                 .should().dependOnClassesThat().resideInAnyPackage(
-                        "org.springframework.amqp..", "org.springframework.web..")
+                        ROOT + ".infrastructure..", ROOT + ".api..", ROOT + ".config..")
                 .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    void domainMustNotDependOnApplicationOrInfrastructure() {
+        var classes = new ClassFileImporter().importPackages(ROOT);
+        noClasses().that().resideInAPackage(ROOT + ".domain..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        ROOT + ".application..", ROOT + ".infrastructure..", ROOT + ".api..", ROOT + ".config..")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    void modulesMustNotImportOtherServicesInternalClasses() {
+        var classes = new ClassFileImporter().importPackages(ROOT);
+        noClasses().that().resideInAPackage(ROOT + "..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "com.agnosticrouter.knowledge..", "com.agnosticrouter.crm..", "com.agnosticrouter.decision..", "com.agnosticrouter.ingestion..", "com.agnosticrouter.notification..", "com.agnosticrouter.observability..")
+                .allowEmptyShould(true)
+                .because("Integration across services is only through common-contracts and HTTP/RabbitMQ")
                 .check(classes);
     }
 }
