@@ -3,6 +3,14 @@ server:
 spring:
   application:
     name: decision-engine-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/agnostic_router}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
   rabbitmq:
     listener:
       simple:
